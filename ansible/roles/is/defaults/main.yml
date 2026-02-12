@@ -1,0 +1,21 @@
+---
+# WSO2 Identity Server defaults
+is_version: "7.0.0"
+is_home: "{{ wso2_install_dir }}/wso2is-{{ is_version }}"
+is_admin_username: admin
+is_admin_password: admin
+is_hostname: localhost
+is_port_offset: 0
+
+# Console port (mapped to 9444 on host via Docker)
+is_console_port: 9443
+
+# Database settings
+is_db_type: h2
+is_db_url: "jdbc:h2:./repository/database/WSO2IDENTITY_DB;DB_CLOSE_ON_EXIT=FALSE"
+is_db_username: wso2carbon
+is_db_password: wso2carbon
+is_db_driver: org.h2.Driver
+
+# User store
+is_user_store_type: database_unique_id

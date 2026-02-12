@@ -1,0 +1,55 @@
+[server]
+hostname = "{{ apim_hostname }}"
+offset = {{ apim_port_offset }}
+
+[super_admin]
+username = "{{ apim_admin_username }}"
+password = "{{ apim_admin_password }}"
+
+[user_store]
+type = "database_unique_id"
+
+[database.apim_db]
+type = "{{ apim_db_type }}"
+url = "{{ apim_db_url }}"
+username = "{{ apim_db_username }}"
+password = "{{ apim_db_password }}"
+driver = "{{ apim_db_driver }}"
+
+[database.shared_db]
+type = "{{ apim_db_type }}"
+url = "{{ apim_db_url }}"
+username = "{{ apim_db_username }}"
+password = "{{ apim_db_password }}"
+driver = "{{ apim_db_driver }}"
+
+{% if apim_km_enabled %}
+[[apim.key_manager]]
+name = "WSO2-IS"
+type = "{{ apim_km_type }}"
+display_name = "WSO2 Identity Server"
+description = "WSO2 Identity Server as Key Manager"
+service_url = "{{ apim_km_url }}/services/"
+username = "{{ apim_admin_username }}"
+password = "{{ apim_admin_password }}"
+{% endif %}
+
+[apim.gateway.environment]
+name = "Default"
+type = "hybrid"
+display_in_api_console = true
+description = "Default Gateway"
+service_url = "https://{{ apim_hostname }}:{{ apim_console_port }}/services/"
+ws_endpoint = "ws://{{ apim_hostname }}:9099"
+wss_endpoint = "wss://{{ apim_hostname }}:8099"
+http_endpoint = "http://{{ apim_hostname }}:{{ apim_gateway_http_port }}"
+https_endpoint = "https://{{ apim_hostname }}:{{ apim_gateway_https_port }}"
+
+[apim.cors]
+allow_origins = "*"
+allow_methods = ["GET", "PUT", "POST", "DELETE", "PATCH", "OPTIONS"]
+allow_headers = ["authorization", "Access-Control-Allow-Origin", "Content-Type", "SOAPAction", "apikey", "Internal-Key"]
+allow_credentials = false
+
+[transport.https.properties]
+proxyPort = {{ apim_console_port }}

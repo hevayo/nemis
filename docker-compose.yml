@@ -1,0 +1,101 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: docker/web/Dockerfile
+    ports:
+      - "${WEB_PORT:-5173}:5173"
+    volumes:
+      - ./web:/app
+      - web_node_modules:/app/node_modules
+    environment:
+      - VITE_API_URL=${VITE_API_URL:-http://localhost:8000}
+    depends_on:
+      - api
+    networks:
+      - nemis
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/api/Dockerfile
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - ./api:/app
+      - api_vendor:/app/vendor
+    environment:
+      - APP_ENV=${APP_ENV:-local}
+      - APP_KEY=${APP_KEY:-}
+      - DB_CONNECTION=mysql
+      - DB_HOST=db
+      - DB_PORT=3306
+      - DB_DATABASE=${DB_DATABASE:-nemis}
+      - DB_USERNAME=${DB_USERNAME:-nemis}
+      - DB_PASSWORD=${DB_PASSWORD:-secret}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - nemis
+
+  db:
+    image: mysql:8.0
+    ports:
+      - "${DB_PORT:-3306}:3306"
+    environment:
+      - MYSQL_ROOT_PASSWORD=${DB_ROOT_PASSWORD:-rootsecret}
+      - MYSQL_DATABASE=${DB_DATABASE:-nemis}
+      - MYSQL_USER=${DB_USERNAME:-nemis}
+      - MYSQL_PASSWORD=${DB_PASSWORD:-secret}
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - nemis
+
+  apim:
+    build:
+      context: docker/base-ssh
+    ports:
+      - "${APIM_SSH_PORT:-2222}:22"
+      - "${APIM_CONSOLE_PORT:-9443}:9443"
+      - "${APIM_GATEWAY_PORT:-8243}:8243"
+    volumes:
+      - ./resources/apim:/opt/resources/apim
+    healthcheck:
+      test: ["CMD", "bash", "-c", "ssh-keygen -A && /usr/sbin/sshd -t"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - nemis
+
+  is:
+    build:
+      context: docker/base-ssh
+    ports:
+      - "${IS_SSH_PORT:-2223}:22"
+      - "${IS_CONSOLE_PORT:-9444}:9443"
+    volumes:
+      - ./resources/is:/opt/resources/is
+    healthcheck:
+      test: ["CMD", "bash", "-c", "ssh-keygen -A && /usr/sbin/sshd -t"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - nemis
+
+volumes:
+  web_node_modules:
+  api_vendor:
+  db_data:
+
+networks:
+  nemis:
+    driver: bridge

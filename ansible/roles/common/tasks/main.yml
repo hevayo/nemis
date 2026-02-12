@@ -1,0 +1,30 @@
+---
+- name: Verify Java 17 is installed
+  command: java -version
+  register: java_version
+  changed_when: false
+
+- name: Display Java version
+  debug:
+    msg: "{{ java_version.stderr_lines }}"
+
+- name: Create wso2 group
+  group:
+    name: wso2
+    state: present
+
+- name: Create wso2 user
+  user:
+    name: wso2
+    group: wso2
+    home: /home/wso2
+    shell: /bin/bash
+    state: present
+
+- name: Create WSO2 install directory
+  file:
+    path: "{{ wso2_install_dir | default('/opt/wso2') }}"
+    state: directory
+    owner: wso2
+    group: wso2
+    mode: "0755"

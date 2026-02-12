@@ -1,0 +1,25 @@
+all:
+  children:
+    apim_servers:
+      hosts:
+        apim-prod:
+          ansible_host: "{{ apim_prod_host }}"
+          ansible_port: 22
+          ansible_user: "{{ apim_prod_user }}"
+          wso2_resource_path: /opt/resources/apim
+          wso2_apim_zip: wso2am-4.3.0.zip
+          wso2_install_dir: /opt/wso2
+
+    is_servers:
+      hosts:
+        is-prod:
+          ansible_host: "{{ is_prod_host }}"
+          ansible_port: 22
+          ansible_user: "{{ is_prod_user }}"
+          wso2_resource_path: /opt/resources/is
+          wso2_is_zip: wso2is-7.0.0.zip
+          wso2_install_dir: /opt/wso2
+
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+    env: production

@@ -1,0 +1,29 @@
+all:
+  children:
+    apim_servers:
+      hosts:
+        apim-local:
+          ansible_host: 127.0.0.1
+          ansible_port: 2222
+          ansible_user: root
+          ansible_password: root
+          ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
+          wso2_resource_path: /opt/resources/apim
+          wso2_apim_zip: wso2am-4.3.0.zip
+          wso2_install_dir: /opt/wso2
+
+    is_servers:
+      hosts:
+        is-local:
+          ansible_host: 127.0.0.1
+          ansible_port: 2223
+          ansible_user: root
+          ansible_password: root
+          ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
+          wso2_resource_path: /opt/resources/is
+          wso2_is_zip: wso2is-7.0.0.zip
+          wso2_install_dir: /opt/wso2
+
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+    env: local

@@ -1,0 +1,52 @@
+---
+- name: Check if APIM zip exists in resources
+  stat:
+    path: "{{ wso2_resource_path }}/{{ wso2_apim_zip }}"
+  register: apim_zip
+
+- name: Fail if APIM zip not found
+  fail:
+    msg: >
+      WSO2 APIM zip not found at {{ wso2_resource_path }}/{{ wso2_apim_zip }}.
+      Please download wso2am-{{ apim_version }}.zip and place it in resources/apim/.
+  when: not apim_zip.stat.exists
+
+- name: Check if APIM is already installed
+  stat:
+    path: "{{ apim_home }}"
+  register: apim_installed
+
+- name: Extract APIM zip
+  unarchive:
+    src: "{{ wso2_resource_path }}/{{ wso2_apim_zip }}"
+    dest: "{{ wso2_install_dir }}"
+    remote_src: true
+    owner: wso2
+    group: wso2
+  when: not apim_installed.stat.exists
+
+- name: Template deployment.toml
+  template:
+    src: deployment.toml.j2
+    dest: "{{ apim_home }}/repository/conf/deployment.toml"
+    owner: wso2
+    group: wso2
+    mode: "0644"
+
+- name: Set ownership of APIM directory
+  file:
+    path: "{{ apim_home }}"
+    state: directory
+    owner: wso2
+    group: wso2
+    recurse: true
+
+- name: Start APIM server
+  become: true
+  become_user: wso2
+  shell: |
+    nohup {{ apim_home }}/bin/api-manager.sh start &
+  args:
+    chdir: "{{ apim_home }}"
+  environment:
+    JAVA_HOME: "{{ lookup('env', 'JAVA_HOME') | default('/usr/lib/jvm/java-17-openjdk-amd64', true) }}"

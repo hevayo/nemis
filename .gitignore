@@ -1,0 +1,36 @@
+# Environment
+.env
+
+# Node
+node_modules/
+dist/
+
+# PHP / Laravel
+vendor/
+storage/logs/*
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*
+bootstrap/cache/*
+.phpunit.result.cache
+
+# WSO2 distribution zips (large binaries)
+resources/apim/*.zip
+resources/is/*.zip
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml
+
+# Ansible
+*.retry

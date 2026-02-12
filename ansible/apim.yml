@@ -1,0 +1,7 @@
+---
+- name: Configure WSO2 API Manager
+  hosts: apim_servers
+  become: true
+  roles:
+    - common
+    - apim

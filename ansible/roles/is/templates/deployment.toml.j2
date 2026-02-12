@@ -1,0 +1,41 @@
+[server]
+hostname = "{{ is_hostname }}"
+offset = {{ is_port_offset }}
+
+[super_admin]
+username = "{{ is_admin_username }}"
+password = "{{ is_admin_password }}"
+
+[user_store]
+type = "{{ is_user_store_type }}"
+
+[database.identity_db]
+type = "{{ is_db_type }}"
+url = "{{ is_db_url }}"
+username = "{{ is_db_username }}"
+password = "{{ is_db_password }}"
+driver = "{{ is_db_driver }}"
+
+[database.shared_db]
+type = "{{ is_db_type }}"
+url = "{{ is_db_url }}"
+username = "{{ is_db_username }}"
+password = "{{ is_db_password }}"
+driver = "{{ is_db_driver }}"
+
+[authentication.authenticator.basic_authenticator]
+name = "BasicAuthenticator"
+enable = true
+
+[oauth]
+allow_refresh_token_without_client_secret = true
+
+[oauth.endpoints]
+oauth2_authz_url = "https://{{ is_hostname }}:{{ is_console_port }}/oauth2/authorize"
+oauth2_token_url = "https://{{ is_hostname }}:{{ is_console_port }}/oauth2/token"
+oauth2_userinfo_url = "https://{{ is_hostname }}:{{ is_console_port }}/oauth2/userinfo"
+oauth2_revoke_url = "https://{{ is_hostname }}:{{ is_console_port }}/oauth2/revoke"
+oidc_discovery_url = "https://{{ is_hostname }}:{{ is_console_port }}/oauth2/token/.well-known/openid-configuration"
+
+[transport.https.properties]
+proxyPort = {{ is_console_port }}

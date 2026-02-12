@@ -1,0 +1,27 @@
+---
+# WSO2 API Manager defaults
+apim_version: "4.3.0"
+apim_home: "{{ wso2_install_dir }}/wso2am-{{ apim_version }}"
+apim_admin_username: admin
+apim_admin_password: admin
+apim_hostname: localhost
+apim_port_offset: 0
+
+# Gateway settings
+apim_gateway_https_port: 8243
+apim_gateway_http_port: 8280
+
+# Console port
+apim_console_port: 9443
+
+# Key Manager (IS) integration
+apim_km_enabled: true
+apim_km_type: WSO2-IS
+apim_km_url: "https://is-local:9443"
+
+# Database settings
+apim_db_type: h2
+apim_db_url: "jdbc:h2:./repository/database/WSO2AM_DB;DB_CLOSE_ON_EXIT=FALSE"
+apim_db_username: wso2carbon
+apim_db_password: wso2carbon
+apim_db_driver: org.h2.Driver

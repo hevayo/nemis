@@ -1,0 +1,52 @@
+---
+- name: Check if IS zip exists in resources
+  stat:
+    path: "{{ wso2_resource_path }}/{{ wso2_is_zip }}"
+  register: is_zip
+
+- name: Fail if IS zip not found
+  fail:
+    msg: >
+      WSO2 IS zip not found at {{ wso2_resource_path }}/{{ wso2_is_zip }}.
+      Please download wso2is-{{ is_version }}.zip and place it in resources/is/.
+  when: not is_zip.stat.exists
+
+- name: Check if IS is already installed
+  stat:
+    path: "{{ is_home }}"
+  register: is_installed
+
+- name: Extract IS zip
+  unarchive:
+    src: "{{ wso2_resource_path }}/{{ wso2_is_zip }}"
+    dest: "{{ wso2_install_dir }}"
+    remote_src: true
+    owner: wso2
+    group: wso2
+  when: not is_installed.stat.exists
+
+- name: Template deployment.toml
+  template:
+    src: deployment.toml.j2
+    dest: "{{ is_home }}/repository/conf/deployment.toml"
+    owner: wso2
+    group: wso2
+    mode: "0644"
+
+- name: Set ownership of IS directory
+  file:
+    path: "{{ is_home }}"
+    state: directory
+    owner: wso2
+    group: wso2
+    recurse: true
+
+- name: Start IS server
+  become: true
+  become_user: wso2
+  shell: |
+    nohup {{ is_home }}/bin/wso2server.sh start &
+  args:
+    chdir: "{{ is_home }}"
+  environment:
+    JAVA_HOME: "{{ lookup('env', 'JAVA_HOME') | default('/usr/lib/jvm/java-17-openjdk-amd64', true) }}"
