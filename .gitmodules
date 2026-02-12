@@ -1,0 +1,6 @@
+[submodule "web"]
+	path = web
+	url = git@github.com:hevayo/nemis-react.git
+[submodule "api"]
+	path = api
+	url = git@github.com:hevayo/cemis-lk.git

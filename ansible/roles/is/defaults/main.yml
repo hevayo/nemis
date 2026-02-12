@@ -1,21 +1,23 @@
 ---
-# WSO2 Identity Server defaults
-is_version: "7.0.0"
-is_home: "{{ wso2_install_dir }}/wso2is-{{ is_version }}"
-is_admin_username: admin
-is_admin_password: admin
-is_hostname: localhost
-is_port_offset: 0
-
-# Console port (mapped to 9444 on host via Docker)
-is_console_port: 9443
+service_user: "{{ wso2_service_user }}"
 
 # Database settings
-is_db_type: h2
-is_db_url: "jdbc:h2:./repository/database/WSO2IDENTITY_DB;DB_CLOSE_ON_EXIT=FALSE"
-is_db_username: wso2carbon
-is_db_password: wso2carbon
-is_db_driver: org.h2.Driver
+is_identity_db_host: "{{ mysql_host | default('localhost') }}"
+is_identity_db_port: "{{ mysql_port | default(3306) }}"
+is_identity_db_name: "{{ mysql_is_db | default('wso2_is_db') }}"
+is_identity_db_username: "{{ mysql_user | default('nemis') }}"
+is_identity_db_password: "{{ mysql_password | default('nemis1234') }}"
 
-# User store
-is_user_store_type: database_unique_id
+is_shared_db_host: "{{ mysql_host | default('localhost') }}"
+is_shared_db_port: "{{ mysql_port | default(3306) }}"
+is_shared_db_name: "{{ mysql_is_shared_db | default('wso2_is_shared_db') }}"
+is_shared_db_username: "{{ mysql_user | default('nemis') }}"
+is_shared_db_password: "{{ mysql_password | default('nemis1234') }}"
+
+# Server settings
+is_server_hostname: "{{ is_hostname | default('localhost') }}"
+is_server_base_path: "https://{{ is_server_hostname }}"
+
+# APIM connection (for event listener notification)
+apim_server_host: "{{ apim_host | default('localhost') }}"
+apim_server_port: "{{ apim_port | default('9443') }}"

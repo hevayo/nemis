@@ -1,7 +1,0 @@
----
-- name: Configure WSO2 Identity Server
-  hosts: is_servers
-  become: true
-  roles:
-    - common
-    - is

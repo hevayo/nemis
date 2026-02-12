@@ -1,4 +1,5 @@
 services:
+  # ─── Application Services ─────────────────────────────────────────────
   web:
     build:
       context: .
@@ -13,7 +14,7 @@ services:
     depends_on:
       - api
     networks:
-      - nemis
+      - nemis-network
 
   api:
     build:
@@ -28,74 +29,100 @@ services:
       - APP_ENV=${APP_ENV:-local}
       - APP_KEY=${APP_KEY:-}
       - DB_CONNECTION=mysql
-      - DB_HOST=db
+      - DB_HOST=nemis-mysql
       - DB_PORT=3306
       - DB_DATABASE=${DB_DATABASE:-nemis}
       - DB_USERNAME=${DB_USERNAME:-nemis}
-      - DB_PASSWORD=${DB_PASSWORD:-secret}
+      - DB_PASSWORD=${DB_PASSWORD:-nemis1234}
     depends_on:
-      db:
+      nemis-mysql:
         condition: service_healthy
     networks:
-      - nemis
+      - nemis-network
 
-  db:
+  # ─── Database ─────────────────────────────────────────────────────────
+  nemis-mysql:
     image: mysql:8.0
+    container_name: nemis-mysql
     ports:
-      - "${DB_PORT:-3306}:3306"
+      - "${DB_PORT:-3307}:3306"
     environment:
-      - MYSQL_ROOT_PASSWORD=${DB_ROOT_PASSWORD:-rootsecret}
+      - MYSQL_ROOT_PASSWORD=${DB_ROOT_PASSWORD:-root}
       - MYSQL_DATABASE=${DB_DATABASE:-nemis}
       - MYSQL_USER=${DB_USERNAME:-nemis}
-      - MYSQL_PASSWORD=${DB_PASSWORD:-secret}
+      - MYSQL_PASSWORD=${DB_PASSWORD:-nemis1234}
     volumes:
-      - db_data:/var/lib/mysql
+      - nemis-mysql-data:/var/lib/mysql
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       interval: 10s
       timeout: 5s
       retries: 5
     networks:
-      - nemis
+      - nemis-network
 
-  apim:
+  # ─── WSO2: Single Instance (APIM + IS on same container) ─────────────
+  nemis-app:
     build:
       context: docker/base-ssh
+    container_name: nemis-app
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    profiles:
+      - single
+    ports:
+      - "${WSO2_SSH_PORT:-2222}:22"
+      - "${APIM_CONSOLE_PORT:-9443}:9443"
+      - "${IS_CONSOLE_PORT:-9444}:9444"
+      - "${APIM_GATEWAY_PORT:-8243}:8243"
+    depends_on:
+      nemis-mysql:
+        condition: service_healthy
+    networks:
+      - nemis-network
+
+  # ─── WSO2: Separate Instances (APIM and IS on different containers) ──
+  nemis-apim:
+    build:
+      context: docker/base-ssh
+    container_name: nemis-apim
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    profiles:
+      - separate
     ports:
       - "${APIM_SSH_PORT:-2222}:22"
       - "${APIM_CONSOLE_PORT:-9443}:9443"
       - "${APIM_GATEWAY_PORT:-8243}:8243"
-    volumes:
-      - ./resources/apim:/opt/resources/apim
-    healthcheck:
-      test: ["CMD", "bash", "-c", "ssh-keygen -A && /usr/sbin/sshd -t"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
+    depends_on:
+      nemis-mysql:
+        condition: service_healthy
     networks:
-      - nemis
+      - nemis-network
 
-  is:
+  nemis-is:
     build:
       context: docker/base-ssh
+    container_name: nemis-is
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    profiles:
+      - separate
     ports:
       - "${IS_SSH_PORT:-2223}:22"
       - "${IS_CONSOLE_PORT:-9444}:9443"
-    volumes:
-      - ./resources/is:/opt/resources/is
-    healthcheck:
-      test: ["CMD", "bash", "-c", "ssh-keygen -A && /usr/sbin/sshd -t"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
+    depends_on:
+      nemis-mysql:
+        condition: service_healthy
     networks:
-      - nemis
+      - nemis-network
 
 volumes:
   web_node_modules:
   api_vendor:
-  db_data:
+  nemis-mysql-data:
 
 networks:
-  nemis:
+  nemis-network:
+    name: nemis-network
     driver: bridge

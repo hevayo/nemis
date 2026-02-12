@@ -14,9 +14,12 @@ storage/framework/views/*
 bootstrap/cache/*
 .phpunit.result.cache
 
-# WSO2 distribution zips (large binaries)
-resources/apim/*.zip
-resources/is/*.zip
+# WSO2 distribution zips and JARs (large binaries)
+ansible/resources/*.zip
+ansible/resources/*.jar
+
+# Tmp directory (user workspace)
+tmp/
 
 # IDE
 .idea/

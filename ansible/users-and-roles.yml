@@ -1,0 +1,61 @@
+# NEMIS Users and Roles Configuration
+# Usage: ansible-playbook configure-is-and-apim.yaml -e @users-and-roles.yaml
+
+nemis_roles:
+  - name: "Teacher"
+    permissions: []
+
+  - name: "Principal"
+    permissions: []
+
+  - name: "DataEntry"
+    permissions: []
+
+# To add users, replace the empty list below with:
+# nemis_users:
+#   - username: "teacher1"
+#     password: "Teacher@123"
+#     first_name: "Sample"
+#     last_name: "Teacher"
+#     email: "teacher1@moe.gov.lk"
+#     roles:
+#       - "Teacher"
+#
+#   - username: "principal1"
+#     password: "Principal@123"
+#     first_name: "Sample"
+#     last_name: "Principal"
+#     email: "principal1@moe.gov.lk"
+#     roles:
+#       - "Principal"
+#
+#   - username: "dataentry1"
+#     password: "DataEntry@123"
+#     first_name: "Sample"
+#     last_name: "DataEntry"
+#     email: "dataentry1@moe.gov.lk"
+#     roles:
+#       - "DataEntry"
+nemis_users: []
+
+# APIs to create and publish
+nemis_apis:
+  - name: "NEMIS API"
+    version: "1.0.0"
+    context: "/nemis"
+    openapi_url: "http://host.docker.internal:8000/docs/api.json"
+    endpoint_url: "http://host.docker.internal:8000/api/"
+    subscription_policies:
+      - "Unlimited"
+
+# Applications to create, subscribe and generate tokens
+nemis_apps:
+  - name: "NEMIS Web App"
+    description: "NEMIS Web Application"
+    throttling_policy: "Unlimited"
+    token_type: "JWT"
+    callback_url: "http://localhost:5173/authentication/callback"
+    grant_types:
+      - "authorization_code"
+    subscribe_to:
+      - "NEMIS API"

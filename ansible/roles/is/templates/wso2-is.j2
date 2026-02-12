@@ -1,0 +1,41 @@
+#! /bin/sh
+### BEGIN INIT INFO
+# Provides:          wso2-is
+# Required-Start:    $remote_fs $network
+# Required-Stop:     $remote_fs $network
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: WSO2 Identity Server service
+### END INIT INFO
+
+export JAVA_HOME="/usr/lib/jvm/java-21-openjdk-amd64/"
+
+service_user="{{ wso2_service_user | default('nemis') }}"
+log_dir="/var/log/wso2"
+log_file="${log_dir}/wso2-is.log"
+[ -d "$log_dir" ] || mkdir -p "$log_dir"
+touch "$log_file"
+chown "${service_user}":"${service_user}" "$log_file" 2>/dev/null || true
+startcmd="/opt/wso2is-{{ is_version }}/bin/wso2server.sh start >> ${log_file} 2>&1 &"
+restartcmd="/opt/wso2is-{{ is_version }}/bin/wso2server.sh restart >> ${log_file} 2>&1 &"
+stopcmd="/opt/wso2is-{{ is_version }}/bin/wso2server.sh stop >> ${log_file} 2>&1 &"
+
+case "$1" in
+start)
+   echo "Starting the WSO2 IS ..."
+   su -s /bin/sh -c "${startcmd}" "${service_user}"
+;;
+restart)
+   echo "Re-starting the WSO2 IS ..."
+   su -s /bin/sh -c "${restartcmd}" "${service_user}"
+;;
+stop)
+   echo "Stopping the WSO2 IS ..."
+   su -s /bin/sh -c "${stopcmd}" "${service_user}"
+;;
+*)
+   echo "Usage: $0 {start|stop|restart}"
+   exit 1
+esac
+
+exit 0

@@ -1,3 +1,4 @@
 ---
-- import_playbook: apim.yml
-- import_playbook: is.yml
+# Master playbook: installs both APIM and IS, then starts services
+- import_playbook: install.yml
+- import_playbook: start-stop.yml

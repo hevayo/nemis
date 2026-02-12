@@ -1,0 +1,322 @@
+---
+# Test script to create a teacher in NEMIS
+# Usage: ansible-playbook test-create-teacher.yaml -i test-inventory.ini -e bearer_token=<token>
+#
+# This script will:
+# 1. Check if teacher exists by NIC
+# 2. If exists, delete the user from IS via SCIM2
+# 3. Create the teacher via NEMIS API (through APIM gateway)
+
+- name: Test - Create Teacher in NEMIS
+  hosts: localhost
+  gather_facts: false
+  vars:
+    # NEMIS API Gateway settings
+    nemis_gateway_host: "{{ apim_gateway_host | default('localhost') }}"
+    nemis_gateway_port: "{{ apim_gateway_port | default('8243') }}"
+    nemis_api_context: "{{ nemis_context | default('/nemis/1.0.0') }}"
+    nemis_api_url: "https://{{ nemis_gateway_host }}:{{ nemis_gateway_port }}{{ nemis_api_context }}"
+
+    # Bearer token for API authentication (required)
+    api_token: "{{ bearer_token | default('') }}"
+
+    # IS connection settings (for user cleanup)
+    is_host: "{{ is_hostname | default('identity.emis.moe.gov.lk') }}"
+    is_port: "{{ is_mgmt_port | default('9444') }}"
+    is_admin_user: "{{ is_admin_username | default('admin') }}"
+    is_admin_pass: "{{ is_admin_password | default('admin') }}"
+
+    # MySQL connection settings (for database cleanup)
+    mysql_host: "{{ db_host | default('localhost') }}"
+    mysql_user: "{{ db_user | default('root') }}"
+    mysql_password: "{{ db_password | default('root') }}"
+    mysql_database: "{{ db_name | default('nemis') }}"
+
+    # Test teacher data
+    test_teacher:
+      nic: "199012345678"
+      is_new_registration: true
+      titleId: "T01"
+      fullName: "Test Teacher User"
+      dateOfBirth: "1990-01-15T00:00:00Z"
+      genderId: "G01"
+      religionId: "R01"
+      ethnicityId: "E01"
+      civilStatusId: "C01"
+      bloodGroupId: "B01"
+      healthCondition: 1
+      healthConditionDescription: null
+      districtId: "DIS001"
+      gnDivisionId: "GND01766"
+      dsOfficeId: "DSO0056"
+      email: "test.teacher@moe.gov.lk"
+      contact: "0771234567"
+      addressLine1: "123 Test Street"
+      addressLine2: "Test City"
+      addressLine3: null
+      postalCode: "10100"
+      # First Appointment
+      firstAppointmentCategory: "TCAT0001"
+      firstAppointmentDate: "2020-01-01T00:00:00Z"
+      firstAppointmentLetter: "APT/2020/001"
+      firstAppointmentService: "SER001"
+      firstAppointmentRank: "RANK001"
+      firstAppointmentType: "TCHTYPE001"
+      firstAppointmentSubject: "ASUB0034"
+      firstAppointmentMedium: "MED01"
+      firstAppointmentTeachingSubject: "SUB0048"
+      firstAppointmentZone: "ZEO0000001"
+      firstAppointmentInstCategory: "ICID001"
+      firstAppointmentInstitution: "INST00001"
+      firstAppointmentPosition: "POS001"
+      # Current Appointment
+      currentAppointmentRegType: "Permanent"
+      currentAppointmentDate: "2020-01-01T00:00:00Z"
+      currentAppointmentLetter: "APT/2020/001"
+      currentAppointmentService: "SER001"
+      currentAppointmentRank: "RANK001"
+      currentAppointmentSubject: "ASUB0034"
+      currentAppointmentZone: "ZEO0000001"
+      currentAppointmentInstCategory: "ICID001"
+      currentAppointmentInstitution: "INST00001"
+      currentAppointmentPosition: "POS001"
+
+  tasks:
+    # =========================================================================
+    # PART 0: Validate bearer token
+    # =========================================================================
+
+    - name: Check bearer token is provided
+      fail:
+        msg: "Bearer token is required. Use: -e bearer_token=<your_token>"
+      when: api_token | length == 0
+
+    # =========================================================================
+    # PART 1: Check if teacher exists
+    # =========================================================================
+
+    - name: Check if teacher exists by NIC
+      ansible.builtin.uri:
+        url: "{{ nemis_api_url }}/teachers/check-nic/{{ test_teacher.nic }}"
+        method: GET
+        validate_certs: no
+        headers:
+          Authorization: "Bearer {{ api_token }}"
+        status_code: [200, 422]
+      register: teacher_check
+      ignore_errors: yes
+
+    - name: Display teacher check result
+      debug:
+        msg: "Teacher with NIC {{ test_teacher.nic }}: {{ teacher_check.json.message | default('Check failed') }}"
+
+    - name: Set fact for teacher existence
+      set_fact:
+        teacher_exists: "{{ teacher_check.json.message | default('') == 'Teacher nic not available' }}"
+        existing_teacher_data: "{{ teacher_check.json.data | default(None) }}"
+
+    # =========================================================================
+    # PART 2: Delete existing user from IS (if teacher exists)
+    # =========================================================================
+
+    - name: Search for user in IS by email
+      ansible.builtin.uri:
+        url: "https://{{ is_host }}:{{ is_port }}/scim2/Users?filter=emails+eq+{{ test_teacher.email }}"
+        method: GET
+        validate_certs: no
+        user: "{{ is_admin_user }}"
+        password: "{{ is_admin_pass }}"
+        force_basic_auth: yes
+        headers:
+          Content-Type: "application/json"
+      register: is_user_search
+      when: teacher_exists
+
+    - name: Display IS user search result
+      debug:
+        msg: "Found {{ is_user_search.json.totalResults | default(0) }} user(s) in IS with email {{ test_teacher.email }}"
+      when: teacher_exists
+
+    - name: Delete user from IS
+      ansible.builtin.uri:
+        url: "https://{{ is_host }}:{{ is_port }}/scim2/Users/{{ is_user_search.json.Resources[0].id }}"
+        method: DELETE
+        validate_certs: no
+        user: "{{ is_admin_user }}"
+        password: "{{ is_admin_pass }}"
+        force_basic_auth: yes
+        status_code: [204, 200]
+      when:
+        - teacher_exists
+        - is_user_search.json.totalResults | default(0) > 0
+      register: is_user_deleted
+
+    - name: Display IS user deletion result
+      debug:
+        msg: "Deleted user from IS: {{ test_teacher.email }}"
+      when:
+        - teacher_exists
+        - is_user_deleted is defined
+        - is_user_deleted.status | default(0) in [200, 204]
+
+    # =========================================================================
+    # PART 2b: Delete existing teacher from NEMIS database
+    # =========================================================================
+
+    - name: Get people_id from existing teacher data
+      set_fact:
+        existing_people_id: "{{ existing_teacher_data.people_id | default('') }}"
+      when: teacher_exists
+
+    - name: Clean up NEMIS database by email (always run to handle orphaned data)
+      command: >
+        mysql -h {{ mysql_host }} -u {{ mysql_user }} -p{{ mysql_password }} {{ mysql_database }}
+        -e "SET @pid = (SELECT people_id FROM people WHERE email = '{{ test_teacher.email }}' LIMIT 1);
+            DELETE FROM users WHERE people_id = @pid;
+            DELETE FROM teachers WHERE employee_id = @pid;
+            DELETE FROM employer_appointments WHERE employee_id = @pid;
+            DELETE FROM people WHERE people_id = @pid;"
+      register: db_cleanup_by_email
+      ignore_errors: yes
+
+    - name: Clean up NEMIS database by people_id (if exists from API)
+      command: >
+        mysql -h {{ mysql_host }} -u {{ mysql_user }} -p{{ mysql_password }} {{ mysql_database }}
+        -e "DELETE FROM users WHERE people_id = '{{ existing_people_id }}';
+            DELETE FROM teachers WHERE employee_id = '{{ existing_people_id }}';
+            DELETE FROM employer_appointments WHERE employee_id = '{{ existing_people_id }}';
+            DELETE FROM people WHERE people_id = '{{ existing_people_id }}';"
+      when:
+        - teacher_exists
+        - existing_people_id | length > 0
+      register: db_cleanup_by_id
+      ignore_errors: yes
+
+    - name: Display database cleanup result
+      debug:
+        msg: "Cleaned up NEMIS database for email {{ test_teacher.email }}"
+
+    # =========================================================================
+    # PART 3: Create teacher
+    # =========================================================================
+
+    - name: Create teacher via NEMIS API
+      ansible.builtin.uri:
+        url: "{{ nemis_api_url }}/teacher-create"
+        method: POST
+        validate_certs: no
+        headers:
+          Content-Type: "application/json"
+          Authorization: "Bearer {{ api_token }}"
+        body_format: json
+        body: "{{ test_teacher }}"
+        status_code: [201, 200, 422, 500]
+      register: teacher_created
+
+    - name: Display teacher creation result
+      debug:
+        msg: |
+          Status: {{ teacher_created.json.status | default('unknown') }}
+          Message: {{ teacher_created.json.message | default('No message') }}
+          People ID: {{ teacher_created.json.people_id | default('N/A') }}
+          Default Password: {{ teacher_created.json.default_password | default('N/A') }}
+      when: teacher_created.json.status | default('') == 'success'
+
+    - name: Display teacher creation error
+      debug:
+        msg: |
+          Error creating teacher:
+          Status: {{ teacher_created.json.status | default('unknown') }}
+          Message: {{ teacher_created.json.message | default('No message') }}
+          Full response: {{ teacher_created.json | default({}) }}
+      when: teacher_created.json.status | default('') != 'success'
+
+    # =========================================================================
+    # PART 4: Verify teacher was created
+    # =========================================================================
+
+    - name: Verify teacher exists after creation
+      ansible.builtin.uri:
+        url: "{{ nemis_api_url }}/teachers/check-nic/{{ test_teacher.nic }}"
+        method: GET
+        validate_certs: no
+        headers:
+          Authorization: "Bearer {{ api_token }}"
+        status_code: [200]
+      register: teacher_verify
+      when: teacher_created.json.status | default('') == 'success'
+
+    - name: Display verification result
+      debug:
+        msg: "NEMIS Verification: {{ teacher_verify.json.message | default('unknown') }}"
+      when: teacher_created.json.status | default('') == 'success'
+
+    # =========================================================================
+    # PART 5: Verify user was created in IS
+    # =========================================================================
+
+    - name: Search for created user in IS by email
+      ansible.builtin.uri:
+        url: "https://{{ is_host }}:{{ is_port }}/scim2/Users?filter=emails+eq+{{ test_teacher.email }}"
+        method: GET
+        validate_certs: no
+        user: "{{ is_admin_user }}"
+        password: "{{ is_admin_pass }}"
+        force_basic_auth: yes
+        headers:
+          Content-Type: "application/json"
+      register: is_user_verify
+      when: teacher_created.json.status | default('') == 'success'
+
+    - name: Set IS user verification facts
+      set_fact:
+        is_user_found: "{{ is_user_verify.json.totalResults | default(0) | int > 0 }}"
+        is_username: "{{ is_user_verify.json.Resources[0].userName | default('N/A') if (is_user_verify.json.totalResults | default(0) | int > 0) else 'N/A' }}"
+        is_user_id: "{{ is_user_verify.json.Resources[0].id | default('N/A') if (is_user_verify.json.totalResults | default(0) | int > 0) else 'N/A' }}"
+      when: teacher_created.json.status | default('') == 'success'
+
+    - name: Display IS user verification result
+      debug:
+        msg: "IS User Found - Username: {{ is_username }}, ID: {{ is_user_id }}"
+      when:
+        - teacher_created.json.status | default('') == 'success'
+        - is_user_found | bool
+
+    - name: Fail if IS user not found
+      fail:
+        msg: "FAILED: Teacher created in NEMIS (People ID: {{ teacher_created.json.people_id }}) but user NOT found in IS!"
+      when:
+        - teacher_created.json.status | default('') == 'success'
+        - not (is_user_found | bool)
+
+    # =========================================================================
+    # Summary
+    # =========================================================================
+
+    - name: Set summary facts
+      set_fact:
+        summary_is_cleaned: "{{ 'Yes' if (is_user_deleted.status | default(0) | int in [200, 204]) else 'No' }}"
+        summary_nemis_status: "{{ teacher_created.json.status | default('unknown') }}"
+        summary_people_id: "{{ teacher_created.json.people_id | default('N/A') }}"
+
+    - name: Test Summary
+      debug:
+        msg:
+          - "============================================"
+          - "Test Create Teacher - Summary"
+          - "============================================"
+          - "Gateway URL   : {{ nemis_api_url }}"
+          - "NIC           : {{ test_teacher.nic }}"
+          - "Name          : {{ test_teacher.fullName }}"
+          - "Email         : {{ test_teacher.email }}"
+          - "--------------------------------------------"
+          - "Teacher existed before : {{ teacher_exists }}"
+          - "IS user cleaned up     : {{ summary_is_cleaned if teacher_exists else 'N/A' }}"
+          - "--------------------------------------------"
+          - "NEMIS Creation : {{ summary_nemis_status }}"
+          - "People ID      : {{ summary_people_id }}"
+          - "--------------------------------------------"
+          - "IS User Created  : {{ 'Yes' if (is_user_found | default(false) | bool) else 'No' }}"
+          - "IS Username      : {{ is_username | default('N/A') }}"
+          - "IS User ID       : {{ is_user_id | default('N/A') }}"
+          - "============================================"

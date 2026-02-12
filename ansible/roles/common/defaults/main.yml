@@ -1,0 +1,4 @@
+---
+wso2_service_user: nemis
+service_user: "{{ wso2_service_user }}"
+same_instance: false

@@ -1,52 +1,203 @@
 ---
-- name: Check if IS zip exists in resources
-  stat:
-    path: "{{ wso2_resource_path }}/{{ wso2_is_zip }}"
-  register: is_zip
+- name: Locate IS artifact (local)
+  set_fact:
+    is_zip: "{{ query('ansible.builtin.fileglob', playbook_dir + '/resources/wso2is-*.zip') | first }}"
+  run_once: true
+  delegate_to: localhost
 
-- name: Fail if IS zip not found
-  fail:
-    msg: >
-      WSO2 IS zip not found at {{ wso2_resource_path }}/{{ wso2_is_zip }}.
-      Please download wso2is-{{ is_version }}.zip and place it in resources/is/.
-  when: not is_zip.stat.exists
+- name: Extract IS version from filename
+  set_fact:
+    is_version: "{{ is_zip | basename | regex_search('wso2is-(.*)\\.zip', '\\1') }}"
+  when: is_zip is defined
+  run_once: true
+  delegate_to: localhost
 
-- name: Check if IS is already installed
-  stat:
-    path: "{{ is_home }}"
-  register: is_installed
+- name: Normalize IS version to string
+  set_fact:
+    is_version: "{{ (is_version if is_version is string else (is_version | first)) | string }}"
+  when: is_version is defined
+  run_once: true
+  delegate_to: localhost
 
-- name: Extract IS zip
+- name: Log IS artifact details
+  debug:
+    msg: "IS zip={{ is_zip | default('not found') }}, version={{ is_version | default('unknown') }}"
+  run_once: true
+  delegate_to: localhost
+
+- name: Copy IS zip to target
+  copy:
+    src: "{{ is_zip }}"
+    dest: "/tmp/wso2is.zip"
+  when: inventory_hostname == "nemis.is" and is_zip is defined
+
+- name: Extract IS to /opt
   unarchive:
-    src: "{{ wso2_resource_path }}/{{ wso2_is_zip }}"
-    dest: "{{ wso2_install_dir }}"
-    remote_src: true
-    owner: wso2
-    group: wso2
-  when: not is_installed.stat.exists
-
-- name: Template deployment.toml
-  template:
-    src: deployment.toml.j2
-    dest: "{{ is_home }}/repository/conf/deployment.toml"
-    owner: wso2
-    group: wso2
-    mode: "0644"
-
-- name: Set ownership of IS directory
-  file:
-    path: "{{ is_home }}"
-    state: directory
-    owner: wso2
-    group: wso2
-    recurse: true
-
-- name: Start IS server
+    src: "/tmp/wso2is.zip"
+    dest: /opt
+    remote_src: yes
   become: true
-  become_user: wso2
-  shell: |
-    nohup {{ is_home }}/bin/wso2server.sh start &
+  become_user: root
+  when: inventory_hostname == "nemis.is"
+
+- name: Ensure IS directories owned by service user
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ service_user }}"
+    group: "{{ service_user }}"
+    mode: "0755"
+    recurse: yes
+  loop:
+    - "/opt/wso2is-{{ is_version | string }}"
+    - "/var/log/wso2"
+  when: inventory_hostname == "nemis.is" and is_version is defined
+
+- name: Ensure IS external log file exists and owned
+  file:
+    path: "/var/log/wso2/wso2-is.log"
+    state: touch
+    owner: "{{ service_user }}"
+    group: "{{ service_user }}"
+    mode: "0644"
+  when: inventory_hostname == "nemis.is" and is_version is defined
+
+- name: Ensure IS pid file is writable by service user
+  file:
+    path: "/opt/wso2is-{{ is_version | string }}/wso2carbon.pid"
+    state: touch
+    owner: "{{ service_user }}"
+    group: "{{ service_user }}"
+    mode: "0644"
+  when: inventory_hostname == "nemis.is" and is_version is defined
+
+- name: Copy MySQL connector JAR to IS lib
+  copy:
+    src: "{{ playbook_dir }}/resources/mysql-connector-j-9.4.0.jar"
+    dest: "/opt/wso2is-{{ is_version | string }}/repository/components/lib/mysql-connector-j-9.4.0.jar"
+    remote_src: false
+    owner: "{{ service_user }}"
+    group: "{{ service_user }}"
+    mode: "0644"
+  when: inventory_hostname == "nemis.is" and is_version is defined
+  become: true
+  become_user: root
+
+- name: Copy WSO2 IS notification event handlers JAR to IS dropins
+  copy:
+    src: "{{ playbook_dir }}/resources/wso2is.notification.event.handlers-2.0.5.jar"
+    dest: "/opt/wso2is-{{ is_version | string }}/repository/components/dropins/wso2is.notification.event.handlers-2.0.5.jar"
+    remote_src: false
+    owner: "{{ service_user }}"
+    group: "{{ service_user }}"
+    mode: "0644"
+  when: inventory_hostname == "nemis.is" and is_version is defined
+  become: true
+  become_user: root
+
+- name: Remove embedded H2 database blocks from IS deployment.toml
+  ansible.builtin.shell: |
+    sed -i '/^\[database\.identity_db\]$/,/^password = "wso2carbon"$/d' "/opt/wso2is-{{ is_version | string }}/repository/conf/deployment.toml"
+    sed -i '/^\[database\.shared_db\]$/,/^password = "wso2carbon"$/d' "/opt/wso2is-{{ is_version | string }}/repository/conf/deployment.toml"
   args:
-    chdir: "{{ is_home }}"
-  environment:
-    JAVA_HOME: "{{ lookup('env', 'JAVA_HOME') | default('/usr/lib/jvm/java-17-openjdk-amd64', true) }}"
+    executable: /bin/bash
+  when: inventory_hostname == "nemis.is" and is_version is defined
+
+- name: Configure IS database connections in deployment.toml
+  blockinfile:
+    path: "/opt/wso2is-{{ is_version | string }}/repository/conf/deployment.toml"
+    marker: "# {mark} ANSIBLE MANAGED IS DATABASES"
+    insertafter: EOF
+    block: |
+      [database.identity_db]
+      type = "mysql"
+      url = "jdbc:mysql://{{ is_identity_db_host }}:{{ is_identity_db_port }}/{{ is_identity_db_name }}?useSSL=false&amp;allowPublicKeyRetrieval=true"
+      username = "{{ is_identity_db_username }}"
+      password = "{{ is_identity_db_password }}"
+      driver = "com.mysql.cj.jdbc.Driver"
+
+      [database.shared_db]
+      type = "mysql"
+      url = "jdbc:mysql://{{ is_shared_db_host }}:{{ is_shared_db_port }}/{{ is_shared_db_name }}?useSSL=false&amp;allowPublicKeyRetrieval=true"
+      username = "{{ is_shared_db_username }}"
+      password = "{{ is_shared_db_password }}"
+      driver = "com.mysql.cj.jdbc.Driver"
+  when: inventory_hostname == "nemis.is" and is_version is defined
+
+- name: Ensure server offset in IS deployment.toml
+  blockinfile:
+    path: "/opt/wso2is-{{ is_version | string }}/repository/conf/deployment.toml"
+    marker: "# {mark} ANSIBLE MANAGED SERVER OFFSET"
+    insertafter: '^\[server\]'
+    block: |
+      offset = 1
+  when: inventory_hostname == "nemis.is" and is_version is defined
+
+- name: Set IS hostname in deployment.toml
+  ansible.builtin.lineinfile:
+    path: "/opt/wso2is-{{ is_version | string }}/repository/conf/deployment.toml"
+    regexp: '^hostname\s*='
+    line: 'hostname = "{{ is_server_hostname }}"'
+    insertafter: '^\[server\]'
+  when: inventory_hostname == "nemis.is" and is_version is defined
+
+- name: Set IS base_path in deployment.toml
+  ansible.builtin.lineinfile:
+    path: "/opt/wso2is-{{ is_version | string }}/repository/conf/deployment.toml"
+    regexp: '^base_path\s*='
+    line: 'base_path = "{{ is_server_base_path }}"'
+    insertafter: '^\[server\]'
+  when: inventory_hostname == "nemis.is" and is_version is defined
+
+- name: Configure IS OAuth, SCIM and APIM event listener
+  blockinfile:
+    path: "/opt/wso2is-{{ is_version | string }}/repository/conf/deployment.toml"
+    marker: "# {mark} ANSIBLE MANAGED IS OAUTH AND EVENT LISTENER"
+    insertafter: EOF
+    block: |
+      [oauth]
+      authorize_all_scopes = true
+
+      [[resource.access_control]]
+      context="(.*)/scim2/Me"
+      secure=true
+      http_method="GET"
+      cross_tenant=true
+      permissions=[]
+      scopes=[]
+
+      [[event_listener]]
+      id = "token_revocation"
+      type = "org.wso2.carbon.identity.core.handler.AbstractIdentityHandler"
+      name = "org.wso2.is.notification.ApimOauthEventInterceptor"
+      order = 1
+
+      [event_listener.properties]
+      notification_endpoint = "https://{{ apim_server_host }}:{{ apim_server_port }}/internal/data/v1/notify"
+      username = "admin"
+      password = "admin"
+      'header.X-WSO2-KEY-MANAGER' = "WSO2-IS"
+  when: inventory_hostname == "nemis.is" and is_version is defined
+
+- name: Install init script for IS
+  template:
+    src: wso2-is.j2
+    dest: /etc/init.d/wso2-is
+    owner: root
+    group: root
+    mode: '0755'
+  when: inventory_hostname == "nemis.is" and is_version is defined
+
+# Certificate exchange - export IS certificate
+- name: Export IS public certificate
+  ansible.builtin.shell: |
+    keytool -export -alias wso2carbon -keystore "/opt/wso2is-{{ is_version | string }}/repository/resources/security/wso2carbon.p12" \
+      -storetype PKCS12 -storepass wso2carbon -file /tmp/is-public.crt -noprompt
+  when: inventory_hostname == "nemis.is" and is_version is defined
+
+- name: Fetch IS certificate to control node
+  ansible.builtin.fetch:
+    src: /tmp/is-public.crt
+    dest: /tmp/is-public.crt
+    flat: yes
+  when: inventory_hostname == "nemis.is" and is_version is defined

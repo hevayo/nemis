@@ -1,0 +1,23 @@
+---
+- name: Control WSO2 services
+  hosts: nemis
+  become: true
+  vars:
+    wso2_action: start   # override with -e wso2_action=stop|restart
+  tasks:
+    - name: Ensure action is valid
+      assert:
+        that: wso2_action in ['start', 'stop', 'restart']
+        fail_msg: "wso2_action must be one of start|stop|restart (got {{ wso2_action }})"
+
+    - name: Control APIM service
+      service:
+        name: wso2-apim
+        state: "{{ 'restarted' if wso2_action == 'restart' else (wso2_action + 'ed') }}"
+      when: inventory_hostname == 'nemis.apim'
+
+    - name: Control IS service
+      service:
+        name: wso2-is
+        state: "{{ 'restarted' if wso2_action == 'restart' else (wso2_action + 'ed') }}"
+      when: inventory_hostname == 'nemis.is'

@@ -1,27 +1,16 @@
 FROM ubuntu:22.04
 
-ENV DEBIAN_FRONTEND=noninteractive
+RUN apt update && apt install openssh-server sudo -y
 
-# Install OpenSSH server and JDK 17
-RUN apt-get update && apt-get install -y \
-    openssh-server \
-    openjdk-17-jdk \
-    unzip \
-    curl \
-    python3 \
-    sudo \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
+RUN useradd -rm -d /home/ubuntu -s /bin/bash -g root -G sudo -u 1000 nemis
 
-# Configure SSH
-RUN mkdir /var/run/sshd \
-    && echo 'root:root' | chpasswd \
-    && sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config \
-    && sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
+RUN echo 'nemis:123456' | chpasswd
 
-# Set JAVA_HOME
-ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
-ENV PATH="${JAVA_HOME}/bin:${PATH}"
+RUN service ssh start
 
 EXPOSE 22
+EXPOSE 9443
+EXPOSE 9444
+EXPOSE 8243
 
-CMD ["/usr/sbin/sshd", "-D"]
+CMD ["/usr/sbin/sshd","-D"]

@@ -1,0 +1,40 @@
+---
+- name: Install and configure WSO2 APIM and IS
+  hosts: nemis
+  become: yes
+  become_method: sudo
+  strategy: linear
+  vars:
+    service_user: "{{ wso2_service_user | default('nemis') }}"
+  roles:
+    - common
+    - apim
+    - is
+
+  # Certificate exchange runs after both products are installed
+  post_tasks:
+    - name: Copy APIM certificate to IS host
+      ansible.builtin.copy:
+        src: /tmp/apim-public.crt
+        dest: /tmp/apim-public.crt
+      when: inventory_hostname == "nemis.is"
+
+    - name: Import APIM certificate into IS truststore
+      ansible.builtin.shell: |
+        keytool -import -alias wso2apim -file /tmp/apim-public.crt \
+          -keystore "/opt/wso2is-{{ is_version | string }}/repository/resources/security/client-truststore.p12" \
+          -storetype PKCS12 -storepass wso2carbon -noprompt || true
+      when: inventory_hostname == "nemis.is" and is_version is defined
+
+    - name: Copy IS certificate to APIM host
+      ansible.builtin.copy:
+        src: /tmp/is-public.crt
+        dest: /tmp/is-public.crt
+      when: inventory_hostname == "nemis.apim"
+
+    - name: Import IS certificate into APIM truststore
+      ansible.builtin.shell: |
+        keytool -import -alias wso2is -file /tmp/is-public.crt \
+          -keystore "/opt/wso2am-{{ apim_version | string }}/repository/resources/security/client-truststore.jks" \
+          -storepass wso2carbon -noprompt || true
+      when: inventory_hostname == "nemis.apim" and apim_version is defined

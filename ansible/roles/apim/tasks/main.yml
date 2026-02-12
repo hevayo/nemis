@@ -1,52 +1,156 @@
 ---
-- name: Check if APIM zip exists in resources
-  stat:
-    path: "{{ wso2_resource_path }}/{{ wso2_apim_zip }}"
-  register: apim_zip
+- name: Locate APIM artifact (local)
+  set_fact:
+    apim_zip: "{{ query('ansible.builtin.fileglob', playbook_dir + '/resources/wso2am-*.zip') | first }}"
+  run_once: true
+  delegate_to: localhost
 
-- name: Fail if APIM zip not found
-  fail:
-    msg: >
-      WSO2 APIM zip not found at {{ wso2_resource_path }}/{{ wso2_apim_zip }}.
-      Please download wso2am-{{ apim_version }}.zip and place it in resources/apim/.
-  when: not apim_zip.stat.exists
+- name: Extract APIM version from filename
+  set_fact:
+    apim_version: "{{ apim_zip | basename | regex_search('wso2am-(.*)\\.zip', '\\1') }}"
+  when: apim_zip is defined
+  run_once: true
+  delegate_to: localhost
 
-- name: Check if APIM is already installed
-  stat:
-    path: "{{ apim_home }}"
-  register: apim_installed
+- name: Normalize APIM version to string
+  set_fact:
+    apim_version: "{{ (apim_version if apim_version is string else (apim_version | first)) | string }}"
+  when: apim_version is defined
+  run_once: true
+  delegate_to: localhost
 
-- name: Extract APIM zip
+- name: Log APIM artifact details
+  debug:
+    msg: "APIM zip={{ apim_zip | default('not found') }}, version={{ apim_version | default('unknown') }}"
+  run_once: true
+  delegate_to: localhost
+
+- name: Copy APIM zip to target
+  copy:
+    src: "{{ apim_zip }}"
+    dest: "/tmp/wso2am.zip"
+  when: inventory_hostname == "nemis.apim" and apim_zip is defined
+
+- name: Extract APIM to /opt
   unarchive:
-    src: "{{ wso2_resource_path }}/{{ wso2_apim_zip }}"
-    dest: "{{ wso2_install_dir }}"
-    remote_src: true
-    owner: wso2
-    group: wso2
-  when: not apim_installed.stat.exists
-
-- name: Template deployment.toml
-  template:
-    src: deployment.toml.j2
-    dest: "{{ apim_home }}/repository/conf/deployment.toml"
-    owner: wso2
-    group: wso2
-    mode: "0644"
-
-- name: Set ownership of APIM directory
-  file:
-    path: "{{ apim_home }}"
-    state: directory
-    owner: wso2
-    group: wso2
-    recurse: true
-
-- name: Start APIM server
+    src: "/tmp/wso2am.zip"
+    dest: /opt
+    remote_src: yes
   become: true
-  become_user: wso2
-  shell: |
-    nohup {{ apim_home }}/bin/api-manager.sh start &
+  become_user: root
+  when: inventory_hostname == "nemis.apim"
+
+- name: Ensure APIM directories owned by service user
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ service_user }}"
+    group: "{{ service_user }}"
+    mode: "0755"
+    recurse: yes
+  loop:
+    - "/opt/wso2am-{{ apim_version | string }}"
+    - "/var/log/wso2"
+  when: inventory_hostname == "nemis.apim" and apim_version is defined
+
+- name: Ensure APIM external log file exists and owned
+  file:
+    path: "/var/log/wso2/wso2-apim.log"
+    state: touch
+    owner: "{{ service_user }}"
+    group: "{{ service_user }}"
+    mode: "0644"
+  when: inventory_hostname == "nemis.apim" and apim_version is defined
+
+- name: Copy MySQL connector JAR to APIM lib
+  copy:
+    src: "{{ playbook_dir }}/resources/mysql-connector-j-9.4.0.jar"
+    dest: "/opt/wso2am-{{ apim_version | string }}/repository/components/lib/mysql-connector-j-9.4.0.jar"
+    remote_src: false
+    owner: "{{ service_user }}"
+    group: "{{ service_user }}"
+    mode: "0644"
+  when: inventory_hostname == "nemis.apim" and apim_version is defined
+  become: true
+  become_user: root
+
+- name: Remove embedded H2 database blocks from deployment.toml
+  ansible.builtin.shell: |
+    sed -i '/^\[database\.apim_db\]$/,/^password = "wso2carbon"$/d' "/opt/wso2am-{{ apim_version | string }}/repository/conf/deployment.toml"
+    sed -i '/^\[database\.shared_db\]$/,/^password = "wso2carbon"$/d' "/opt/wso2am-{{ apim_version | string }}/repository/conf/deployment.toml"
   args:
-    chdir: "{{ apim_home }}"
-  environment:
-    JAVA_HOME: "{{ lookup('env', 'JAVA_HOME') | default('/usr/lib/jvm/java-17-openjdk-amd64', true) }}"
+    executable: /bin/bash
+  when: inventory_hostname == "nemis.apim" and apim_version is defined
+
+- name: Configure APIM database connections in deployment.toml
+  blockinfile:
+    path: "/opt/wso2am-{{ apim_version | string }}/repository/conf/deployment.toml"
+    marker: "# {mark} ANSIBLE MANAGED APIM DATABASES"
+    insertafter: EOF
+    block: |
+      [database.shared_db]
+      type = "mysql"
+      url = "jdbc:mysql://{{ apim_shared_db_host }}:{{ apim_shared_db_port }}/{{ apim_shared_db_name }}?useSSL=false&amp;allowPublicKeyRetrieval=true"
+      username = "{{ apim_shared_db_username }}"
+      password = "{{ apim_shared_db_password }}"
+      driver = "com.mysql.cj.jdbc.Driver"
+
+      [database.apim_db]
+      type = "mysql"
+      url = "jdbc:mysql://{{ apim_db_host }}:{{ apim_db_port }}/{{ apim_db_name }}?useSSL=false&amp;allowPublicKeyRetrieval=true"
+      username = "{{ apim_db_username }}"
+      password = "{{ apim_db_password }}"
+      driver = "com.mysql.cj.jdbc.Driver"
+  when: inventory_hostname == "nemis.apim" and apim_version is defined
+
+- name: Set APIM hostname in deployment.toml
+  ansible.builtin.lineinfile:
+    path: "/opt/wso2am-{{ apim_version | string }}/repository/conf/deployment.toml"
+    regexp: '^hostname\s*='
+    line: 'hostname = "{{ apim_server_hostname }}"'
+    insertafter: '^\[server\]'
+  when: inventory_hostname == "nemis.apim" and apim_version is defined
+
+- name: Set APIM base_path in deployment.toml
+  ansible.builtin.lineinfile:
+    path: "/opt/wso2am-{{ apim_version | string }}/repository/conf/deployment.toml"
+    regexp: '^base_path\s*='
+    line: 'base_path = "{{ apim_server_base_path }}"'
+    insertafter: '^\[server\]'
+  when: inventory_hostname == "nemis.apim" and apim_version is defined
+
+- name: Enable APIM backend JWT with end-user claims
+  ansible.builtin.blockinfile:
+    path: "/opt/wso2am-{{ apim_version | string }}/repository/conf/deployment.toml"
+    marker: "# {mark} ANSIBLE MANAGED APIM JWT"
+    insertafter: EOF
+    block: |
+      [apim.jwt]
+      enable = true
+      claim_dialect = "http://wso2.org/claims"
+      header = "X-JWT-Assertion"
+      enable_user_claims = true
+  when: inventory_hostname == "nemis.apim" and apim_version is defined
+
+- name: Install init script for APIM
+  template:
+    src: wso2-apim.j2
+    dest: /etc/init.d/wso2-apim
+    owner: root
+    group: root
+    mode: '0755'
+  when: inventory_hostname == "nemis.apim" and apim_version is defined
+
+# Certificate exchange - export APIM certificate
+- name: Export APIM public certificate
+  ansible.builtin.shell: |
+    keytool -export -alias wso2carbon -keystore "/opt/wso2am-{{ apim_version | string }}/repository/resources/security/wso2carbon.jks" \
+      -storepass wso2carbon -file /tmp/apim-public.crt -noprompt
+  when: inventory_hostname == "nemis.apim" and apim_version is defined
+
+- name: Fetch APIM certificate to control node
+  ansible.builtin.fetch:
+    src: /tmp/apim-public.crt
+    dest: /tmp/apim-public.crt
+    flat: yes
+  when: inventory_hostname == "nemis.apim" and apim_version is defined
