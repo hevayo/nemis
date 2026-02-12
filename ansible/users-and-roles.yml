@@ -43,8 +43,8 @@ nemis_apis:
   - name: "NEMIS API"
     version: "1.0.0"
     context: "/nemis"
-    openapi_url: "http://host.docker.internal:8000/docs/api.json"
-    endpoint_url: "http://host.docker.internal:8000/api/"
+    openapi_url: "http://api.nemis:8080/docs/api.json"
+    endpoint_url: "http://api.nemis:8080/api/"
     subscription_policies:
       - "Unlimited"
 

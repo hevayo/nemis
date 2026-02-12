@@ -108,7 +108,7 @@ Both modes are fully automated — the setup script handles containers, database
 | Service       | URL                            | Credentials     |
 |---------------|--------------------------------|-----------------|
 | Web (Vite)    | http://localhost:5173          | -               |
-| API (Laravel) | http://localhost:8000          | -               |
+| API (Laravel) | http://localhost:8080          | -               |
 | MySQL         | localhost:3307                 | root / root     |
 | APIM Console  | https://localhost:9443/carbon  | admin / admin   |
 | IS Console    | https://localhost:9444/carbon  | admin / admin   |

@@ -969,8 +969,8 @@
         m2m_app_id: "{{ m2m_app_created.json.id }}"
       when:
         - not (m2m_app_exists | bool)
-        - m2m_app_created is defined
-        - m2m_app_created.json is defined
+        - m2m_app_created is not skipped
+        - m2m_app_created.json.id is defined
 
     - name: Get SCIM2 Users API resource ID
       ansible.builtin.uri:
@@ -1015,6 +1015,7 @@
             - "internal_user_mgt_update"
         status_code: [200, 201, 409]
       when:
+        - m2m_app_id is defined
         - m2m_app_id | length > 0
         - scim2_users_api.json.totalResults | default(0) | int > 0
 
@@ -1036,6 +1037,7 @@
             - "internal_role_mgt_update"
         status_code: [200, 201, 409]
       when:
+        - m2m_app_id is defined
         - m2m_app_id | length > 0
         - scim2_roles_api.json.totalResults | default(0) | int > 0
 
@@ -1050,7 +1052,9 @@
         headers:
           Content-Type: "application/json"
       register: m2m_oidc_config
-      when: m2m_app_id | length > 0
+      when:
+        - m2m_app_id is defined
+        - m2m_app_id | length > 0
 
     - name: Get Teacher role ID from IS
       ansible.builtin.uri:
@@ -1079,7 +1083,7 @@
           - ""
           - "Add these to your .env file:"
           - "WSO2_ENABLED=true"
-          - "WSO2_BASE_URL=https://{{ is_host }}:{{ is_port }}"
+          - "WSO2_BASE_URL=https://identity.nemis:{{ is_port }}"
           - "WSO2_M2M_CLIENT_ID={{ m2m_oidc_config.json.clientId }}"
           - "WSO2_M2M_CLIENT_SECRET={{ m2m_oidc_config.json.clientSecret }}"
           - "WSO2_TEACHER_ROLE_ID={{ teacher_role_id | default('NOT_FOUND - create Teacher role first') }}"

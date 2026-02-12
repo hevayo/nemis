@@ -1,4 +1,4 @@
-FROM php:8.3-cli
+FROM php:8.4-cli
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -25,6 +25,10 @@ RUN composer install --no-scripts --no-autoloader || true
 # Source code mounted as volume in dev
 COPY api/ ./
 
-EXPOSE 8000
+EXPOSE 8080
 
-CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"]
+# At startup: install deps, ensure .env exists, generate key if needed
+CMD bash -c "\
+  composer install --no-interaction && \
+  if [ ! -f .env ]; then cp .env.example .env && php artisan key:generate; fi && \
+  php artisan serve --host=0.0.0.0 --port=8080"

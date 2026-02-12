@@ -10,7 +10,7 @@ services:
       - ./web:/app
       - web_node_modules:/app/node_modules
     environment:
-      - VITE_API_URL=${VITE_API_URL:-http://localhost:8000}
+      - VITE_API_URL=${VITE_API_URL:-http://localhost:8080}
     depends_on:
       - api
     networks:
@@ -21,13 +21,12 @@ services:
       context: .
       dockerfile: docker/api/Dockerfile
     ports:
-      - "${API_PORT:-8000}:8000"
+      - "${API_PORT:-8080}:8080"
     volumes:
       - ./api:/app
       - api_vendor:/app/vendor
     environment:
       - APP_ENV=${APP_ENV:-local}
-      - APP_KEY=${APP_KEY:-}
       - DB_CONNECTION=mysql
       - DB_HOST=nemis-mysql
       - DB_PORT=3306
@@ -38,7 +37,9 @@ services:
       nemis-mysql:
         condition: service_healthy
     networks:
-      - nemis-network
+      nemis-network:
+        aliases:
+          - api.nemis
 
   # ─── Database ─────────────────────────────────────────────────────────
   nemis-mysql:
@@ -79,7 +80,10 @@ services:
       nemis-mysql:
         condition: service_healthy
     networks:
-      - nemis-network
+      nemis-network:
+        aliases:
+          - apim.nemis
+          - identity.nemis
 
   # ─── WSO2: Separate Instances (APIM and IS on different containers) ──
   nemis-apim:
@@ -98,7 +102,9 @@ services:
       nemis-mysql:
         condition: service_healthy
     networks:
-      - nemis-network
+      nemis-network:
+        aliases:
+          - apim.nemis
 
   nemis-is:
     build:
@@ -115,7 +121,9 @@ services:
       nemis-mysql:
         condition: service_healthy
     networks:
-      - nemis-network
+      nemis-network:
+        aliases:
+          - identity.nemis
 
 volumes:
   web_node_modules:

@@ -62,12 +62,12 @@ fi
 
 # ─── Step 1: Start Docker containers ────────────────────────────────────
 echo ""
-echo "==> Step 1/5: Building and starting Docker containers (profile: $MODE)..."
+echo "==> Step 1/6: Building and starting Docker containers (profile: $MODE)..."
 docker compose --profile "$MODE" up -d --build
 
 # ─── Step 2: Wait for MySQL and create WSO2 databases ───────────────────
 echo ""
-echo "==> Step 2/5: Waiting for MySQL to be healthy..."
+echo "==> Step 2/6: Waiting for MySQL to be healthy..."
 until docker compose exec nemis-mysql mysqladmin ping -h localhost --silent 2>/dev/null; do
     sleep 2
 done
@@ -77,9 +77,22 @@ echo "==> Creating WSO2 databases..."
 cd "$PROJECT_DIR/ansible"
 ansible-playbook -i inventory/mysql.ini mysql-setup.yml
 
-# ─── Step 3: Wait for SSH and install WSO2 via Ansible ──────────────────
+# ─── Step 3: Run Laravel migrations and seeders ──────────────────────────
 echo ""
-echo "==> Step 3/5: Waiting for SSH..."
+echo "==> Step 3/6: Running Laravel migrations and seeders..."
+cd "$PROJECT_DIR"
+echo "    Waiting for API container to be ready..."
+until docker compose exec api php artisan --version &>/dev/null; do
+    sleep 3
+done
+docker compose exec api php artisan migrate --force
+docker compose exec api php artisan db:seed --force || echo "    Warning: Some seeders failed. You can re-run manually."
+
+cd "$PROJECT_DIR/ansible"
+
+# ─── Step 4: Wait for SSH and install WSO2 via Ansible ──────────────────
+echo ""
+echo "==> Step 4/6: Waiting for SSH..."
 
 wait_for_ssh() {
     local port=$1
@@ -110,9 +123,9 @@ fi
 echo "==> Installing WSO2 APIM and IS..."
 ansible-playbook -i "$INVENTORY" install.yml $EXTRA_VARS
 
-# ─── Step 4: Start WSO2 services ────────────────────────────────────────
+# ─── Step 5: Start WSO2 services ────────────────────────────────────────
 echo ""
-echo "==> Step 4/5: Starting WSO2 services..."
+echo "==> Step 5/6: Starting WSO2 services..."
 ansible-playbook -i "$INVENTORY" start-stop.yml $EXTRA_VARS
 
 echo "    Waiting for APIM and IS to fully start (this takes ~2 minutes)..."
@@ -140,9 +153,9 @@ for i in $(seq 1 60); do
     sleep 5
 done
 
-# ─── Step 5: Configure IS as Key Manager in APIM ────────────────────────
+# ─── Step 6: Configure IS as Key Manager in APIM ────────────────────────
 echo ""
-echo "==> Step 5/5: Configuring IS as Key Manager in APIM..."
+echo "==> Step 6/6: Configuring IS as Key Manager in APIM..."
 ansible-playbook configure-is-and-apim.yml \
     -e @users-and-roles.yml \
     -e apim_hostname=localhost \
@@ -155,7 +168,7 @@ echo "=========================================="
 echo ""
 echo "Services:"
 echo "  Web (Vite):     http://localhost:5173"
-echo "  API (Laravel):  http://localhost:8000"
+echo "  API (Laravel):  http://localhost:8080"
 echo "  MySQL:          localhost:3307"
 echo "  APIM Console:   https://localhost:9443/carbon  (admin/admin)"
 echo "  IS Console:     https://localhost:9444/carbon   (admin/admin)"
