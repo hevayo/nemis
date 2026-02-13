@@ -121,7 +121,9 @@ else
 fi
 
 echo "==> Installing WSO2 APIM and IS..."
-ansible-playbook -i "$INVENTORY" install.yml $EXTRA_VARS
+ansible-playbook -i "$INVENTORY" install.yml $EXTRA_VARS \
+    -e is_hostname=identity.emis.moe.gov.lk \
+    -e is_proxy_port=443
 
 # ─── Step 5: Start WSO2 services ────────────────────────────────────────
 echo ""
