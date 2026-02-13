@@ -1,0 +1,137 @@
+- name: Update .env files with WSO2 credentials
+  hosts: localhost
+  gather_facts: false
+  vars:
+    project_dir: "{{ project_root | default('..') }}"
+    web_env: "{{ project_dir }}/web/.env"
+    api_env: "{{ project_dir }}/api/.env"
+
+    # APIM connection
+    apim_host: "{{ apim_hostname | default('localhost') }}"
+    apim_port: "{{ apim_mgmt_port | default('9443') }}"
+    apim_admin_user: "{{ apim_admin_username | default('admin') }}"
+    apim_admin_pass: "{{ apim_admin_password | default('admin') }}"
+
+    # IS connection
+    is_host: "{{ is_hostname | default('localhost') }}"
+    is_port: "{{ is_mgmt_port | default('9444') }}"
+    is_admin_user: "{{ is_admin_username | default('admin') }}"
+    is_admin_pass: "{{ is_admin_password | default('admin') }}"
+
+  tasks:
+    # ── Fetch credentials from APIM and IS ──────────────────────────────
+
+    - name: Get NEMIS Web App from APIM DevPortal
+      ansible.builtin.uri:
+        url: "https://{{ apim_host }}:{{ apim_port }}/api/am/devportal/v3/applications?query=NEMIS%20Web%20App"
+        method: GET
+        validate_certs: no
+        user: "{{ apim_admin_user }}"
+        password: "{{ apim_admin_pass }}"
+        force_basic_auth: yes
+      register: devportal_apps
+
+    - name: Get OAuth keys for NEMIS Web App
+      ansible.builtin.uri:
+        url: "https://{{ apim_host }}:{{ apim_port }}/api/am/devportal/v3/applications/{{ devportal_apps.json.list[0].applicationId }}/oauth-keys"
+        method: GET
+        validate_certs: no
+        user: "{{ apim_admin_user }}"
+        password: "{{ apim_admin_pass }}"
+        force_basic_auth: yes
+      register: web_app_keys
+      when: devportal_apps.json.count | default(0) > 0
+
+    - name: Set web app credentials
+      set_fact:
+        web_consumer_key: "{{ web_app_keys.json.list[0].consumerKey }}"
+        web_consumer_secret: "{{ web_app_keys.json.list[0].consumerSecret }}"
+      when: web_app_keys.json.list | default([]) | length > 0
+
+    - name: Get M2M application from IS
+      ansible.builtin.uri:
+        url: "https://{{ is_host }}:{{ is_port }}/api/server/v1/applications?filter=name+eq+CEMIS-LK+M2M"
+        method: GET
+        validate_certs: no
+        user: "{{ is_admin_user }}"
+        password: "{{ is_admin_pass }}"
+        force_basic_auth: yes
+      register: m2m_app
+
+    - name: Get M2M OIDC config
+      ansible.builtin.uri:
+        url: "https://{{ is_host }}:{{ is_port }}/api/server/v1/applications/{{ m2m_app.json.applications[0].id }}/inbound-protocols/oidc"
+        method: GET
+        validate_certs: no
+        user: "{{ is_admin_user }}"
+        password: "{{ is_admin_pass }}"
+        force_basic_auth: yes
+      register: m2m_oidc
+      when: m2m_app.json.totalResults | default(0) | int > 0
+
+    - name: Get Teacher role ID from IS
+      ansible.builtin.uri:
+        url: "https://{{ is_host }}:{{ is_port }}/scim2/v2/Roles?filter=displayName+eq+Teacher"
+        method: GET
+        validate_certs: no
+        user: "{{ is_admin_user }}"
+        password: "{{ is_admin_pass }}"
+        force_basic_auth: yes
+      register: teacher_role
+
+    - name: Set M2M and role facts
+      set_fact:
+        m2m_client_id: "{{ m2m_oidc.json.clientId }}"
+        m2m_client_secret: "{{ m2m_oidc.json.clientSecret }}"
+        teacher_role_id: "{{ teacher_role.json.Resources[0].id | default('NOT_FOUND') }}"
+
+    # ── Update web/.env ─────────────────────────────────────────────────
+
+    - name: Update VITE_ASGARDEO_CLIENT_ID in web/.env
+      ansible.builtin.lineinfile:
+        path: "{{ web_env }}"
+        regexp: '^VITE_ASGARDEO_CLIENT_ID='
+        line: "VITE_ASGARDEO_CLIENT_ID={{ web_consumer_key }}"
+      when: web_consumer_key is defined
+
+    # ── Update api/.env ─────────────────────────────────────────────────
+
+    - name: Set WSO2_ENABLED=true in api/.env
+      ansible.builtin.lineinfile:
+        path: "{{ api_env }}"
+        regexp: '^WSO2_ENABLED='
+        line: "WSO2_ENABLED=true"
+
+    - name: Update WSO2_M2M_CLIENT_ID in api/.env
+      ansible.builtin.lineinfile:
+        path: "{{ api_env }}"
+        regexp: '^WSO2_M2M_CLIENT_ID='
+        line: "WSO2_M2M_CLIENT_ID={{ m2m_client_id }}"
+
+    - name: Update WSO2_M2M_CLIENT_SECRET in api/.env
+      ansible.builtin.lineinfile:
+        path: "{{ api_env }}"
+        regexp: '^WSO2_M2M_CLIENT_SECRET='
+        line: "WSO2_M2M_CLIENT_SECRET={{ m2m_client_secret }}"
+
+    - name: Update WSO2_TEACHER_ROLE_ID in api/.env
+      ansible.builtin.lineinfile:
+        path: "{{ api_env }}"
+        regexp: '^WSO2_TEACHER_ROLE_ID='
+        line: "WSO2_TEACHER_ROLE_ID={{ teacher_role_id }}"
+
+    - name: Display updated credentials
+      debug:
+        msg:
+          - "============================================"
+          - ".env files updated!"
+          - "============================================"
+          - "web/.env:"
+          - "  VITE_ASGARDEO_CLIENT_ID={{ web_consumer_key }}"
+          - ""
+          - "api/.env:"
+          - "  WSO2_ENABLED=true"
+          - "  WSO2_M2M_CLIENT_ID={{ m2m_client_id }}"
+          - "  WSO2_M2M_CLIENT_SECRET={{ m2m_client_secret }}"
+          - "  WSO2_TEACHER_ROLE_ID={{ teacher_role_id }}"
+          - "============================================"
