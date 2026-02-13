@@ -38,7 +38,10 @@ cp .env.example .env
 #    - wso2am-4.6.0.zip   (from https://wso2.com/api-manager/)
 #    - wso2is-7.2.0.zip   (from https://wso2.com/identity-server/)
 
-# 4. Run the setup script (single-instance mode — APIM + IS in one container)
+# 4. Add local domain names to /etc/hosts
+bash scripts/setup-hosts.sh
+
+# 5. Run the setup script (single-instance mode — APIM + IS in one container)
 bash scripts/setup.sh
 ```
 
@@ -105,33 +108,49 @@ Both modes are fully automated — the setup script handles containers, database
 
 ### Service URLs
 
-| Service       | URL                            | Credentials     |
-|---------------|--------------------------------|-----------------|
-| Web (Vite)    | http://localhost:5173          | -               |
-| API (Laravel) | http://localhost:8080          | -               |
-| MySQL         | localhost:3307                 | root / root     |
-| APIM Console  | https://localhost:9443/carbon  | admin / admin   |
-| IS Console    | https://localhost:9444/carbon  | admin / admin   |
-| APIM Gateway  | https://localhost:8243         | -               |
-| SSH (WSO2)    | localhost:2222                 | nemis / 123456  |
+An nginx reverse proxy terminates SSL and routes requests by domain name, matching production URLs. Self-signed certificates are generated automatically on first run.
+
+| Service       | URL (via nginx)                              | Direct URL                     | Credentials     |
+|---------------|----------------------------------------------|--------------------------------|-----------------|
+| Web (Vite)    | https://hrm.emis.moe.gov.lk                 | http://localhost:5173          | -               |
+| API (Laravel) | -                                            | http://localhost:8080          | -               |
+| APIM Console  | https://apim.emis.moe.gov.lk/carbon         | https://localhost:9443/carbon  | admin / admin   |
+| IS Console    | https://identity.emis.moe.gov.lk/carbon     | https://localhost:9444/carbon  | admin / admin   |
+| APIM Gateway  | -                                            | https://localhost:8243         | -               |
+| MySQL         | -                                            | localhost:3307                 | root / root     |
+| SSH (WSO2)    | -                                            | localhost:2222                 | nemis / 123456  |
+
+> **Note:** The nginx URLs require `/etc/hosts` entries (added by `scripts/setup-hosts.sh`). Your browser will show a self-signed certificate warning on first visit — accept it to proceed.
 
 ---
 
 ## Architecture
 
 ```
-┌──────────┐    ┌──────────┐    ┌──────────┐
-│   Web    │───>│   API    │───>│  MySQL   │
-│ Vite:5173│    │ PHP:8000 │    │   :3307  │
-└──────────┘    └────┬─────┘    └──────────┘
-                     │
-              ┌──────┴──────┐
-              │             │
-         ┌────▼────┐  ┌────▼────┐
-         │  APIM   │  │   IS    │
-         │  :9443  │  │  :9444  │
-         │  :8243  │  │         │
-         └─────────┘  └─────────┘
+                          ┌──────────────────────┐
+                          │    Nginx (SSL :443)   │
+                          │  hrm.emis.moe.gov.lk  │
+                          │  apim.emis.moe.gov.lk │
+                          │  identity.emis...      │
+                          └───┬──────┬──────┬─────┘
+                              │      │      │
+                 ┌────────────┘      │      └────────────┐
+                 ▼                   ▼                   ▼
+          ┌──────────┐        ┌──────────┐        ┌──────────┐
+          │   Web    │        │  APIM    │        │   IS     │
+          │ Vite:5173│        │  :9443   │        │  :9444   │
+          └────┬─────┘        │  :8243   │        └──────────┘
+               │              └────┬─────┘
+               ▼                   │
+          ┌──────────┐             │
+          │   API    │             │
+          │ PHP:8080 │             │
+          └────┬─────┘             │
+               │                   │
+               ▼                   ▼
+          ┌────────────────────────────┐
+          │          MySQL :3306       │
+          └────────────────────────────┘
 ```
 
 - **Web**: React + Vite frontend (git submodule: `nemis-react`)
@@ -151,7 +170,11 @@ nemis-repo/
 ├── docker/
 │   ├── web/Dockerfile            # Node 20 dev container
 │   ├── api/Dockerfile            # PHP 8.3 + Composer
-│   └── base-ssh/Dockerfile       # Ubuntu 22.04 + SSH (for WSO2)
+│   ├── base-ssh/Dockerfile       # Ubuntu 22.04 + SSH (for WSO2)
+│   └── nginx/
+│       ├── Dockerfile            # nginx:alpine + openssl
+│       ├── nginx.conf            # Reverse proxy config (3 domains)
+│       └── generate-certs.sh     # Self-signed cert generator
 ├── ansible/
 │   ├── inventory/
 │   │   ├── local.ini             # Single-instance (same SSH port)
@@ -173,6 +196,7 @@ nemis-repo/
 │   └── ansible.cfg
 ├── scripts/
 │   ├── setup.sh                  # Docker up + Ansible provision
+│   ├── setup-hosts.sh            # Add domain entries to /etc/hosts
 │   └── teardown.sh               # Docker down + optional volume cleanup
 ├── docker-compose.yml            # Profiles: single, separate
 ├── .env.example

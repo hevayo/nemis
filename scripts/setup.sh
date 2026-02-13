@@ -62,12 +62,12 @@ fi
 
 # ─── Step 1: Start Docker containers ────────────────────────────────────
 echo ""
-echo "==> Step 1/6: Building and starting Docker containers (profile: $MODE)..."
+echo "==> Step 1/7: Building and starting Docker containers (profile: $MODE)..."
 docker compose --profile "$MODE" up -d --build
 
 # ─── Step 2: Wait for MySQL and create WSO2 databases ───────────────────
 echo ""
-echo "==> Step 2/6: Waiting for MySQL to be healthy..."
+echo "==> Step 2/7: Waiting for MySQL to be healthy..."
 until docker compose exec nemis-mysql mysqladmin ping -h localhost --silent 2>/dev/null; do
     sleep 2
 done
@@ -79,7 +79,7 @@ ansible-playbook -i inventory/mysql.ini mysql-setup.yml
 
 # ─── Step 3: Run Laravel migrations and seeders ──────────────────────────
 echo ""
-echo "==> Step 3/6: Running Laravel migrations and seeders..."
+echo "==> Step 3/7: Running Laravel migrations and seeders..."
 cd "$PROJECT_DIR"
 echo "    Waiting for API container to be ready..."
 until docker compose exec api php artisan --version &>/dev/null; do
@@ -92,7 +92,7 @@ cd "$PROJECT_DIR/ansible"
 
 # ─── Step 4: Wait for SSH and install WSO2 via Ansible ──────────────────
 echo ""
-echo "==> Step 4/6: Waiting for SSH..."
+echo "==> Step 4/7: Waiting for SSH..."
 
 wait_for_ssh() {
     local port=$1
@@ -125,7 +125,7 @@ ansible-playbook -i "$INVENTORY" install.yml $EXTRA_VARS
 
 # ─── Step 5: Start WSO2 services ────────────────────────────────────────
 echo ""
-echo "==> Step 5/6: Starting WSO2 services..."
+echo "==> Step 5/7: Starting WSO2 services..."
 ansible-playbook -i "$INVENTORY" start-stop.yml $EXTRA_VARS
 
 echo "    Waiting for APIM and IS to fully start (this takes ~2 minutes)..."
@@ -155,11 +155,23 @@ done
 
 # ─── Step 6: Configure IS as Key Manager in APIM ────────────────────────
 echo ""
-echo "==> Step 6/6: Configuring IS as Key Manager in APIM..."
+echo "==> Step 6/7: Configuring IS as Key Manager in APIM..."
 ansible-playbook configure-is-and-apim.yml \
     -e @users-and-roles.yml \
     -e apim_hostname=localhost \
     -e is_hostname=localhost
+
+# ─── Step 7: Update .env files with generated credentials ─────────────
+echo ""
+echo "==> Step 7/7: Updating .env files with WSO2 credentials..."
+ansible-playbook update-env.yml \
+    -e project_root="$PROJECT_DIR" \
+    -e apim_hostname=localhost \
+    -e is_hostname=localhost
+
+# Restart web container to pick up new env vars
+cd "$PROJECT_DIR"
+docker compose restart web
 
 echo ""
 echo "=========================================="
@@ -167,11 +179,11 @@ echo "  Setup complete!"
 echo "=========================================="
 echo ""
 echo "Services:"
-echo "  Web (Vite):     http://localhost:5173"
+echo "  Web (Vite):     https://hrm.emis.moe.gov.lk"
 echo "  API (Laravel):  http://localhost:8080"
+echo "  APIM Console:   https://apim.emis.moe.gov.lk/carbon   (admin/admin)"
+echo "  IS Console:     https://identity.emis.moe.gov.lk/carbon (admin/admin)"
+echo "  APIM Gateway:   https://service.emis.moe.gov.lk"
 echo "  MySQL:          localhost:3307"
-echo "  APIM Console:   https://localhost:9443/carbon  (admin/admin)"
-echo "  IS Console:     https://localhost:9444/carbon   (admin/admin)"
-echo "  APIM Gateway:   https://localhost:8243"
-echo "  SSH (WSO2):     ssh -p 2222 nemis@localhost     (nemis/123456)"
+echo "  SSH (WSO2):     ssh -p 2222 nemis@localhost              (nemis/123456)"
 echo ""

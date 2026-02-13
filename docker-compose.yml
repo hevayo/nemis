@@ -116,7 +116,7 @@ services:
       - separate
     ports:
       - "${IS_SSH_PORT:-2223}:22"
-      - "${IS_CONSOLE_PORT:-9444}:9443"
+      - "${IS_CONSOLE_PORT:-9444}:9444"
     depends_on:
       nemis-mysql:
         condition: service_healthy
@@ -125,10 +125,26 @@ services:
         aliases:
           - identity.nemis
 
+  # ─── Nginx Reverse Proxy ───────────────────────────────────────────
+  nemis-nginx:
+    build:
+      context: docker/nginx
+    container_name: nemis-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - nginx-certs:/etc/nginx/certs
+    depends_on:
+      - web
+    networks:
+      - nemis-network
+
 volumes:
   web_node_modules:
   api_vendor:
   nemis-mysql-data:
+  nginx-certs:
 
 networks:
   nemis-network:

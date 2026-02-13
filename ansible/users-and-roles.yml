@@ -54,7 +54,7 @@ nemis_apps:
     description: "NEMIS Web Application"
     throttling_policy: "Unlimited"
     token_type: "JWT"
-    callback_url: "http://localhost:5173/authentication/callback"
+    callback_url: "https://hrm.emis.moe.gov.lk/authentication/callback"
     grant_types:
       - "authorization_code"
     subscribe_to:

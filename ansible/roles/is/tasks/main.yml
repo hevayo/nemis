@@ -149,6 +149,16 @@
     insertafter: '^\[server\]'
   when: inventory_hostname == "nemis.is" and is_version is defined
 
+- name: Set IS HTTPS proxy port (for reverse proxy)
+  blockinfile:
+    path: "/opt/wso2is-{{ is_version | string }}/repository/conf/deployment.toml"
+    marker: "# {mark} ANSIBLE MANAGED HTTPS PROXY PORT"
+    insertafter: EOF
+    block: |
+      [transport.https.properties]
+      proxyPort = {{ is_proxy_port }}
+  when: inventory_hostname == "nemis.is" and is_version is defined and is_proxy_port is defined
+
 - name: Configure IS OAuth, SCIM and APIM event listener
   blockinfile:
     path: "/opt/wso2is-{{ is_version | string }}/repository/conf/deployment.toml"
