@@ -37,3 +37,7 @@ docker-compose.override.yml
 
 # Ansible
 *.retry
+
+# Playwright
+playwright/.env
+playwright/test-results/
