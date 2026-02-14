@@ -194,6 +194,11 @@ nemis-repo/
 │   ├── test-create-teacher.yml   # End-to-end teacher creation test
 │   ├── site.yml                  # Master playbook (install + start)
 │   └── ansible.cfg
+├── playwright/
+│   ├── tests/
+│   │   └── sso-login.spec.js        # SSO login integration tests
+│   ├── playwright.config.js         # Chromium, HTTPS errors ignored, 60s timeout
+│   └── package.json
 ├── scripts/
 │   ├── setup.sh                  # Docker up + Ansible provision
 │   ├── setup-hosts.sh            # Add domain entries to /etc/hosts
@@ -227,6 +232,58 @@ ansible-playbook configure-is-and-apim.yml -e @users-and-roles.yml
 ```
 
 For local development, `setup.sh` automatically passes `-e apim_hostname=localhost -e is_hostname=localhost`.
+
+## Playwright Integration Tests
+
+End-to-end tests for the SSO login flow (app → WSO2 Identity Server → callback → dashboard).
+
+### Setup
+
+```bash
+cd playwright
+npm install
+npx playwright install chromium
+```
+
+### Running tests
+
+```bash
+# Headless (default — no browser window, ideal for CI)
+npm test
+
+# Headed (opens a visible browser window so you can watch the flow)
+npm run test:headed
+
+# Debug mode (opens Playwright Inspector with step-through controls)
+npm run test:debug
+```
+
+### Prerequisites
+
+- Docker stack running (`bash scripts/setup.sh`)
+- `/etc/hosts` configured (`bash scripts/setup-hosts.sh`)
+- WSO2 Identity Server accessible at `https://identity.emis.moe.gov.lk`
+
+### Configuration
+
+Test credentials and base URL are in `playwright/.env` (gitignored):
+
+```
+TEST_USERNAME=admin
+TEST_PASSWORD=admin
+BASE_URL=https://hrm.emis.moe.gov.lk
+```
+
+### Test cases
+
+| Test | What it verifies |
+|------|-----------------|
+| Redirect unauthenticated to /login | Auth guard on root route |
+| Full SSO login → dashboard | Login button → IS form → OIDC callback → "Welcome Back" |
+| Logout flow | LOGOUT button → confirmation modal → redirect to /login |
+| Block unauthenticated /dashboard | ProtectedRoute guard |
+
+---
 
 ## Troubleshooting
 
