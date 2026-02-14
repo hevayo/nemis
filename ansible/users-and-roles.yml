@@ -59,3 +59,12 @@ nemis_apps:
       - "authorization_code"
     subscribe_to:
       - "NEMIS API"
+
+  - name: "NEMIS Test App"
+    description: "Automated API testing (password grant)"
+    throttling_policy: "Unlimited"
+    token_type: "JWT"
+    grant_types:
+      - "password"
+    subscribe_to:
+      - "NEMIS API"

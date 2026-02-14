@@ -85,9 +85,9 @@ sshpass -p 123456 ssh -p 2222 nemis@localhost
 docker compose exec nemis-app cat /var/log/wso2/wso2-apim.log
 docker compose exec nemis-app cat /var/log/wso2/wso2-is.log
 
-# Run the teacher creation test
-cd ansible
-ansible-playbook test-create-teacher.yml -i inventory/local.ini -e bearer_token=<your_token>
+# Run API integration tests (Hurl)
+bash scripts/setup-hurl-env.sh   # first time only
+cd hurl && ./run.sh
 ```
 
 ### Switching between single and separate instance modes
@@ -199,9 +199,16 @@ nemis-repo/
 │   │   └── sso-login.spec.js        # SSO login integration tests
 │   ├── playwright.config.js         # Chromium, HTTPS errors ignored, 60s timeout
 │   └── package.json
+├── hurl/
+│   ├── vars.env                     # Consumer key/secret, URLs (gitignored)
+│   ├── run.sh                       # Get token once, run all tests
+│   └── tests/
+│       ├── get-token.hurl           # Password grant → bearer token
+│       └── create-teacher.hurl      # Full teacher creation + verification
 ├── scripts/
 │   ├── setup.sh                  # Docker up + Ansible provision
 │   ├── setup-hosts.sh            # Add domain entries to /etc/hosts
+│   ├── setup-hurl-env.sh         # Extract test app creds → hurl/vars.env
 │   └── teardown.sh               # Docker down + optional volume cleanup
 ├── docker-compose.yml            # Profiles: single, separate
 ├── .env.example
@@ -282,6 +289,53 @@ BASE_URL=https://hrm.emis.moe.gov.lk
 | Full SSO login → dashboard | Login button → IS form → OIDC callback → "Welcome Back" |
 | Logout flow | LOGOUT button → confirmation modal → redirect to /login |
 | Block unauthenticated /dashboard | ProtectedRoute guard |
+
+## Hurl API Integration Tests
+
+API-level integration tests using [Hurl](https://hurl.dev). Tests call the NEMIS API through the APIM gateway with a real bearer token obtained via password grant.
+
+### Prerequisites
+
+- Docker stack running (`bash scripts/setup.sh`)
+- `/etc/hosts` configured (`bash scripts/setup-hosts.sh`)
+- [Hurl](https://hurl.dev/docs/installation.html) and `jq`:
+
+```bash
+sudo apt-add-repository -y ppa:lepapareil/hurl
+sudo apt install -y hurl jq
+```
+
+### Setup
+
+```bash
+# 1. Re-run configure to create the NEMIS Test App (if not already done):
+cd ansible && ansible-playbook configure-is-and-apim.yml \
+    -e @users-and-roles.yml \
+    -e apim_hostname=localhost \
+    -e is_hostname=localhost
+
+# 2. Extract test app credentials into hurl/vars.env:
+bash scripts/setup-hurl-env.sh
+```
+
+### Running tests
+
+```bash
+cd hurl && ./run.sh
+```
+
+The wrapper script gets a bearer token once, then runs all test files with it. Pass extra variables to override defaults:
+
+```bash
+./run.sh --variable nic=200112345678 --variable email=new@moe.gov.lk
+```
+
+### Test files
+
+| File | What it does |
+|------|-------------|
+| `tests/get-token.hurl` | Password grant → bearer token from IS |
+| `tests/create-teacher.hurl` | Check NIC → create teacher → verify in NEMIS → verify user in IS |
 
 ---
 
