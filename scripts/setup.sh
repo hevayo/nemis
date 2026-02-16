@@ -41,18 +41,25 @@ if ! command -v ansible-playbook &> /dev/null; then
     exit 1
 fi
 
-# Check for WSO2 resource zips
-if ! ls ansible/resources/wso2am-*.zip 1>/dev/null 2>&1; then
-    echo "Error: No wso2am-*.zip found in ansible/resources/"
-    echo "       Download from https://wso2.com/api-manager/ and place it there."
-    exit 1
-fi
+# ─── Download missing resources from GitHub release ──────────────────────
+RELEASE_BASE="https://github.com/hevayo/nemis/releases/download/dependencies"
+RESOURCES_DIR="ansible/resources"
 
-if ! ls ansible/resources/wso2is-*.zip 1>/dev/null 2>&1; then
-    echo "Error: No wso2is-*.zip found in ansible/resources/"
-    echo "       Download from https://wso2.com/identity-server/ and place it there."
-    exit 1
-fi
+REQUIRED_FILES=(
+    "wso2am-4.6.0.zip"
+    "wso2is-7.2.0.zip"
+    "mysql-connector-j-9.4.0.jar"
+    "wso2is.notification.event.handlers-2.0.5.jar"
+)
+
+mkdir -p "$RESOURCES_DIR"
+
+for file in "${REQUIRED_FILES[@]}"; do
+    if [ ! -f "$RESOURCES_DIR/$file" ]; then
+        echo "==> Downloading $file..."
+        curl -fSL --progress-bar -o "$RESOURCES_DIR/$file" "$RELEASE_BASE/$file"
+    fi
+done
 
 # Copy .env from example if it doesn't exist
 if [ ! -f .env ]; then
