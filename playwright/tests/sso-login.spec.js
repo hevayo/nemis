@@ -49,6 +49,24 @@ async function performLogin(page) {
   ).first();
   await submitButton.click();
 
+  // Handle OAuth2 consent screen if it appears
+  try {
+    await page.waitForURL("**/oauth2_consent**", { timeout: 5_000 });
+
+    // Dismiss cookie consent banner first — it overlays the Allow button
+    const gotItButton = page.getByRole("button", { name: "Got it" });
+    if (await gotItButton.isVisible()) {
+      await gotItButton.click({ force: true });
+      await gotItButton.waitFor({ state: "hidden", timeout: 3_000 }).catch(() => {});
+    }
+
+    // Click Allow to grant consent
+    const allowButton = page.getByRole("button", { name: "Allow" });
+    await allowButton.click({ force: true });
+  } catch {
+    // No consent screen — already approved or skipped
+  }
+
   // Wait for the OIDC callback to process and redirect to /dashboard
   await page.waitForURL("**/dashboard", { timeout: 30_000 });
   await page.waitForLoadState("networkidle");
@@ -73,16 +91,33 @@ test.describe("SSO Login Flow", () => {
   test("should logout and return to login page", async ({ page }) => {
     await performLogin(page);
 
-    // Click the LOGOUT button (LogoutButton.jsx — text is uppercased via CSS)
-    // There are two logout buttons (sidebar + main); target the one in <main>
-    const logoutButton = page.getByRole("main").getByRole("button", { name: /logout/i });
+    // Click the LOGOUT button (LogoutButton2.jsx in sidebar)
+    const logoutButton = page.getByRole("button", { name: /^logout$/i }).first();
     await expect(logoutButton).toBeVisible({ timeout: 10_000 });
     await logoutButton.click();
 
-    // Confirm in the modal (LogoutButton.jsx)
-    const confirmButton = page.getByRole("button", { name: "Yes, I'm sure" });
+    // Confirm in the modal (LogoutButton2.jsx)
+    const confirmButton = page.getByRole("button", { name: "Yes, logout" });
     await expect(confirmButton).toBeVisible({ timeout: 5_000 });
     await confirmButton.click();
+
+    // Handle IS OAuth2 logout consent screen ("Are you sure that you want to logout?")
+    try {
+      await page.waitForURL("**/oauth2_logout_consent**", { timeout: 5_000 });
+
+      // Dismiss cookie consent banner if present
+      const gotItButton = page.getByRole("button", { name: "Got it" });
+      if (await gotItButton.isVisible()) {
+        await gotItButton.click({ force: true });
+        await gotItButton.waitFor({ state: "hidden", timeout: 3_000 }).catch(() => {});
+      }
+
+      // Click "Yes" to confirm logout on IS side
+      const yesButton = page.getByRole("button", { name: "Yes" });
+      await yesButton.click({ force: true });
+    } catch {
+      // No logout consent screen — already processed
+    }
 
     // Should redirect back to /login after sign-out
     await expect(page).toHaveURL(/\/login/, { timeout: 30_000 });

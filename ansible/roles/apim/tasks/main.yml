@@ -119,6 +119,38 @@
     insertafter: '^\[server\]'
   when: inventory_hostname == "nemis.apim" and apim_version is defined
 
+- name: Set APIM HTTPS proxy port (for reverse proxy)
+  blockinfile:
+    path: "/opt/wso2am-{{ apim_version }}/repository/conf/deployment.toml"
+    marker: "# {mark} ANSIBLE MANAGED HTTPS PROXY PORT"
+    insertafter: EOF
+    block: |
+      [transport.https.properties]
+      proxyPort = {{ apim_proxy_port }}
+  when: inventory_hostname == "nemis.apim" and apim_version is defined and apim_proxy_port is defined
+
+- name: Patch Publisher settings.json origin host
+  ansible.builtin.shell: |
+    python3 -c "
+    import json, sys
+    f = '/opt/wso2am-{{ apim_version }}/repository/deployment/server/webapps/publisher/site/public/conf/settings.json'
+    d = json.load(open(f))
+    d['app']['origin']['host'] = '{{ apim_server_hostname }}'
+    json.dump(d, open(f, 'w'), indent=4)
+    "
+  when: inventory_hostname == "nemis.apim" and apim_version is defined
+
+- name: Patch DevPortal settings.json origin host
+  ansible.builtin.shell: |
+    python3 -c "
+    import json, sys
+    f = '/opt/wso2am-{{ apim_version }}/repository/deployment/server/webapps/devportal/site/public/theme/settings.json'
+    d = json.load(open(f))
+    d['app']['origin']['host'] = '{{ apim_server_hostname }}'
+    json.dump(d, open(f, 'w'), indent=4)
+    "
+  when: inventory_hostname == "nemis.apim" and apim_version is defined
+
 - name: Enable APIM backend JWT with end-user claims
   ansible.builtin.blockinfile:
     path: "/opt/wso2am-{{ apim_version | string }}/repository/conf/deployment.toml"
@@ -139,6 +171,22 @@
     owner: root
     group: root
     mode: '0755'
+  when: inventory_hostname == "nemis.apim" and apim_version is defined
+
+# Regenerate keystore cert with correct hostname SAN for reverse proxy
+- name: Regenerate APIM keystore certificate with hostname SAN
+  ansible.builtin.shell: |
+    KS="/opt/wso2am-{{ apim_version | string }}/repository/resources/security/wso2carbon.jks"
+    keytool -delete -alias wso2carbon -keystore "$KS" -storepass wso2carbon -noprompt 2>/dev/null || true
+    keytool -genkeypair -alias wso2carbon -keyalg RSA -keysize 2048 -validity 3650 \
+      -dname "CN={{ apim_server_hostname }}, OU=WSO2, O=WSO2, L=Mountain View, ST=CA, C=US" \
+      -ext "SAN=dns:{{ apim_server_hostname }},dns:localhost" \
+      -keystore "$KS" -storepass wso2carbon -keypass wso2carbon -noprompt
+    # Import new cert into client-truststore so APIM trusts itself
+    TS="/opt/wso2am-{{ apim_version | string }}/repository/resources/security/client-truststore.jks"
+    keytool -delete -alias wso2carbon -keystore "$TS" -storepass wso2carbon -noprompt 2>/dev/null || true
+    keytool -export -alias wso2carbon -keystore "$KS" -storepass wso2carbon -file /tmp/apim-self.crt -noprompt
+    keytool -import -alias wso2carbon -keystore "$TS" -storepass wso2carbon -file /tmp/apim-self.crt -noprompt
   when: inventory_hostname == "nemis.apim" and apim_version is defined
 
 # Certificate exchange - export APIM certificate

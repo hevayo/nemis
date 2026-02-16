@@ -34,7 +34,7 @@ insecure: true
   "gnDivisionId": "GND01766",
   "dsOfficeId": "DSO0056",
   "email": "{{email}}",
-  "contact": "0771234567",
+  "contact": "{{phone}}",
   "addressLine1": "123 Test Street",
   "addressLine2": "Test City",
   "addressLine3": null,
@@ -57,7 +57,7 @@ insecure: true
   "currentAppointmentLetter": "APT/2020/001",
   "currentAppointmentService": "SER001",
   "currentAppointmentRank": "RANK001",
-  "currentAppointmentSubject": "ASUB0034",
+  "currentAppointmentSubject": "SUB0001",
   "currentAppointmentZone": "ZEO0000001",
   "currentAppointmentInstCategory": "ICID001",
   "currentAppointmentInstitution": "INST00001",
@@ -79,7 +79,7 @@ insecure: true
 
 HTTP 200
 [Asserts]
-jsonpath "$.message" == "Teacher nic not available"
+jsonpath "$.message" == "NIC available"
 
 # Step 4: Verify user was created in IS (SCIM2 lookup with Basic auth)
 GET {{is_url}}/scim2/Users?filter=emails+eq+{{email}}
